@@ -99,7 +99,7 @@ const check = async (options = {}) => {
  */
 const update = async (options = {}) => {
   const result = await check(options), manifest = readManifest(result.root), updated = [];
-  if (!result.updated.length) return { ...result, updated };
+  if (!result.upgrades.length) return { ...result, updated };
   for (const item of result.upgrades) {
     const block = manifest[item.field];
     if (!block || !(item.name in block)) continue;
@@ -110,17 +110,27 @@ const update = async (options = {}) => {
 };
 
 /**
- * 更新根目录 package.json 并执行 npm install
+ * 逐包升级并安装依赖:每个包单独执行 npm install <name>@<latest>,
+ * 成功写入 package.json 并计入 installed,失败计入 failed 且不中断继续下一个
  * >查看定义:@see {@link install}
  * @param {{root?: string, refresh?: boolean, stdio?: string}} [options] 同 check;stdio 传给 npm
- * @returns {Promise<object>} update 结果加 installed、command
+ * @returns {Promise<object>} check 结果加 installed 成功项、failed 失败项、command(npm 命令名)
  */
 const install = async (options = {}) => {
-  const result = await update(options);
-  if (!result.updated.length) return { ...result, installed: false, command: null };
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm', command = `${npm} install`;
-  execFileSync(npm, ['install'], { cwd: result.root, stdio: options.stdio || 'inherit', shell: false });
-  return { ...result, installed: true, command };
+  const result = await check(options), npm = process.platform === 'win32' ? 'npm.cmd' : 'npm',
+    manifest = readManifest(result.root), installed = [], failed = [];
+  for (const item of result.upgrades) {
+    try {
+      execFileSync(npm, ['install', `${item.name}@${item.latest}`],
+        { cwd: result.root, stdio: options.stdio || 'pipe', shell: false });
+      const block = manifest[item.field];
+      if (block && item.name in block) block[item.name] = item.next;
+      installed.push(item);
+    }
+    catch (err) { failed.push({ ...item, reason: err.message || String(err) }); }
+  }
+  if (installed.length) writeManifest(result.root, manifest);
+  return { ...result, installed, failed, command: npm };
 };
 
 export { check, install, update };

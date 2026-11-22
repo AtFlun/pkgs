@@ -40,7 +40,8 @@ const raw = process.argv.slice(2), refresh = raw.some(arg => arg === '--refresh'
         name: Math.max(...result.skipped.map(item => dispWidth(item.name))),
         range: Math.max(...result.skipped.map(item => dispWidth(item.range)))
       };
-      console.log(`    ${chalk.yellow('跳过 ')}${chalk.yellowBright(String(result.skipped.length))}` + chalk.yellow(' 项'));
+      console.log(`    ${chalk.yellow('跳过 ')}${chalk.yellowBright(String(result.skipped.length))}`
+        + chalk.yellow(' 项'));
       for (const item of result.skipped) console.log(formatSkip(item, widths));
     }
     console.log('');
@@ -56,7 +57,7 @@ const raw = process.argv.slice(2), refresh = raw.some(arg => arg === '--refresh'
       grp('命令'),
       cmdLine('c', '查询项目中可升级的依赖(全写 check)'),
       cmdLine('u', '更新 package.json 中的依赖版本,不执行安装(全写 update)'),
-      cmdLine('i', '执行安装最新依赖,等同于 u + npm install(全写 install)'),
+      cmdLine('i', '逐包安装最新依赖,失败不中断继续下一个(全写 install)'),
       cmdLine('help', '输出本帮助'), '',
       grp('选项'),
       cmdLine('-r', '重新查询 registry,忽略 1 小时缓存;完整写法 --refresh'), '',
@@ -75,13 +76,17 @@ const raw = process.argv.slice(2), refresh = raw.some(arg => arg === '--refresh'
   runInstall = async refresh => {
     try {
       console.log(chalk.blueBright('\n  更新并安装依赖'));
-      console.log(`    ${chalk.cyan('步骤 ')}${chalk.gray('更新 package.json → 执行 npm install')}`);
       const result = await install({ refresh });
       console.log(`    ${chalk.cyan('根目录 ')}${chalk.gray(result.root)}`), printWarn(result.warnings);
-      printBody(result, true);
-      if (result.updated.length) console.log(`    ${chalk.cyan('安装 ')}${chalk.green('完成')}`
-        + chalk.gray(`,命令: ${result.command}`));
-      else console.log(`    ${chalk.cyan('安装 ')}${chalk.gray('跳过,无依赖需要更新')}`);
+      if (!result.upgrades.length) console.log(`    ${chalk.cyan('安装 ')}${chalk.gray('跳过,无依赖需要更新')}`);
+      else {
+        for (const item of result.installed) console.log(`    ${chalk.green('✓ ')}${chalk.cyanBright(item.name)}  `
+          + chalk.blue(item.current + ' → ') + chalk.green(item.latest) + chalk.gray(`  ${item.field}`));
+        for (const item of result.failed) console.log(`    ${chalk.red('✗ ')}${chalk.yellowBright(item.name)}  `
+          + chalk.gray(item.reason));
+        console.log(''), console.log(`    ${chalk.cyan('安装 ')}${chalk.green('成功 ' + result.installed.length)}`
+          + chalk.red(' 失败 ' + result.failed.length));
+      }
     } catch (err) { fail(err); }
   },
   runUpdate = async refresh => {
