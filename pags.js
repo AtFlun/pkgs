@@ -1,7 +1,7 @@
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { resolveLatest } from './net.js';
+import { resolveLatest, resolvePrerelease } from './net.js';
 
 const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'],
   SEMVER = /^(?<prefix>\^|~|>=|<=|>|<|=)?(?<version>\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/,
@@ -73,20 +73,24 @@ const check = async (options = {}) => {
     for (const [name, range] of Object.entries(block)) {
       const parsed = parseRange(range);
       if (parsed.skip) { skipped.push({ name, field, range, reason: parsed.skip }); continue; }
-      names.add(name), items.push({ name, field, range, prefix: parsed.prefix, current: parsed.version });
+      names.add(name), items.push({
+        name, field, range, prefix: parsed.prefix, current: parsed.version, pre: parsed.version.includes('-')
+      });
     }
   }
   for (const key of ['overrides', 'resolutions']) if (manifest[key]) warnings.push(`根目录 ${key} 未自动处理,请手动核对`);
 
-  const { data: latest, online } = await resolveLatest([...names], Boolean(options.refresh));
+  const { data: latest, online } = await resolveLatest([...names], Boolean(options.refresh)),
+    { data: pre } = await resolvePrerelease(items.filter(i => i.pre && latest[i.name]).map(i => i.name));
   for (const item of items) {
     const target = latest[item.name];
     if (!target) {
       skipped.push({ ...item, reason: online ? 'registry 无此包' : '离线,未取到版本' });
       continue;
     }
-    if (compareVer(target, item.current) <= 0) continue;
-    upgrades.push({ ...item, latest: target, next: item.prefix + target });
+    const preTarget = item.pre ? pre[item.name] || null : null;
+    if (compareVer(target, item.current) <= 0 && !(preTarget && compareVer(preTarget, item.current) > 0)) continue;
+    upgrades.push({ ...item, latest: target, prerelease: preTarget, next: item.prefix + target });
   }
   return { root, upgrades, skipped, online, warnings };
 };
@@ -113,19 +117,24 @@ const update = async (options = {}) => {
  * 逐包升级并安装依赖:每个包单独执行 npm install <name>@<latest>,
  * 成功写入 package.json 并计入 installed,失败计入 failed 且不中断继续下一个
  * >查看定义:@see {@link install}
- * @param {{root?: string, refresh?: boolean, stdio?: string}} [options] 同 check;stdio 传给 npm
+ * @param {{root?: string, refresh?: boolean, stdio?: string, choose?: Function}} [options] 同 check;
+ *   stdio 传给 npm;choose 预发布选择回调,缺省取预发布版
  * @returns {Promise<object>} check 结果加 installed 成功项、failed 失败项、command(npm 命令名)
  */
 const install = async (options = {}) => {
   const result = await check(options), npm = process.platform === 'win32' ? 'npm.cmd' : 'npm',
     manifest = readManifest(result.root), installed = [], failed = [];
   for (const item of result.upgrades) {
+    const picked = item.prerelease
+      ? (options.choose ? await options.choose(item) : item.prerelease)
+      : item.latest,
+      next = item.prerelease && picked === item.prerelease ? item.prefix + item.prerelease : item.next;
     try {
-      execFileSync(npm, ['install', `${item.name}@${item.latest}`],
+      execFileSync(npm, ['install', `${item.name}@${picked}`],
         { cwd: result.root, stdio: options.stdio || 'pipe', shell: false });
       const block = manifest[item.field];
-      if (block && item.name in block) block[item.name] = item.next;
-      installed.push(item);
+      if (block && item.name in block) block[item.name] = next;
+      installed.push({ ...item, picked, next });
     }
     catch (err) { failed.push({ ...item, reason: err.message || String(err) }); }
   }

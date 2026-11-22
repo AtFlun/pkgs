@@ -4,12 +4,34 @@ import path from 'path';
 
 const CACHE_FILE = path.join(os.homedir(), '.pags-cache.json'), CACHE_TTL = 3600 * 1000,
   REGISTRY = (process.env.npm_config_registry || 'https://registry.npmjs.org').replace(/\/+$/, ''),
+  compareLoose = (a, b) => {
+    const pa = a.split('+')[0].split('-'), pb = b.split('+')[0].split('-'),
+      na = pa[0].split('.').map(n => Number(n) || 0), nb = pb[0].split('.').map(n => Number(n) || 0);
+    for (let i = 0; i < 3; i++) if ((na[i] || 0) !== (nb[i] || 0)) return (na[i] || 0) - (nb[i] || 0);
+    if (pa[1] === pb[1]) return 0;
+    if (!pa[1]) return 1;
+    if (!pb[1]) return -1;
+    return pa[1] < pb[1] ? -1 : 1;
+  },
   fetchLatest = async name => {
     try {
       const url = `${REGISTRY}/${name.replace('/', '%2f')}/latest`,
         res = await fetch(url, { signal: AbortSignal.timeout(5000) });
       if (!res.ok) return null;
       return (await res.json()).version || null;
+    } catch { return null; }
+  },
+  fetchPrerelease = async name => {
+    try {
+      const url = `${REGISTRY}/${name.replace('/', '%2f')}`,
+        res = await fetch(url, {
+          headers: { accept: 'application/vnd.npm.install-v1+json' }, signal: AbortSignal.timeout(5000)
+        });
+      if (!res.ok) return null;
+      const versions = Object.keys((await res.json()).versions || {});
+      let best = null;
+      for (const v of versions) if (v.includes('-') && (!best || compareLoose(v, best) > 0)) best = v;
+      return best;
     } catch { return null; }
   },
   readCache = () => {
@@ -41,4 +63,19 @@ const resolveLatest = async (names, refresh) => {
   return { data, online: ok > 0 };
 };
 
-export { resolveLatest };
+/**
+ * 批量查询各包在 registry 上的最高预发布版本(带内存缓存)
+ * >查看定义:@see {@link resolvePrerelease}
+ * @param {string[]} names 包名数组
+ * @returns {Promise<{data: object, online: boolean}>} 预发布版本映射与是否联网成功
+ */
+const resolvePrerelease = async names => {
+  const preMem = {}, data = {};
+  await Promise.all(names.map(async n => {
+    if (preMem[n] === undefined) preMem[n] = await fetchPrerelease(n);
+    if (preMem[n]) data[n] = preMem[n];
+  }));
+  return { data, online: Object.keys(data).length > 0 };
+};
+
+export { resolveLatest, resolvePrerelease };
