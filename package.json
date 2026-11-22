@@ -1,0 +1,53 @@
+{
+  "name": "@flun/pags",
+  "version": "1.0.0",
+  "description": "查询项目中可升级的依赖,写新版本到根目录 package.json,安装最新依赖;",
+  "type": "module",
+  "types": "index.d.ts",
+  "exports": {
+    ".": "./index.js"
+  },
+  "main": "index.js",
+  "bin": {
+    "pags": "bin/cli.js"
+  },
+  "keywords": [
+    "pags",
+    "flun",
+    "dependency-upgrade",
+    "upgrade",
+    "package.json",
+    "cli"
+  ],
+  "files": [
+    "bin/",
+    "CHANGELOG.md",
+    "README.md",
+    "index.d.ts",
+    "index.js",
+    "net.js",
+    "pags.js",
+    "LICENSE"
+  ],
+  "author": "flun <open@flun.top>",
+  "dependencies": {
+    "chalk": "^6.0.1"
+  },
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10.0.0"
+  },
+  "license": "ISC",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AtFlun/pkgs.git"
+  },
+  "gitee": "https://gitee.com/AtFlun/pkgs.git",
+  "homepage": "https://github.com/AtFlun/pkgs#readme",
+  "bugs": {
+    "url": "https://github.com/AtFlun/pkgs/issues"
+  }
+}
