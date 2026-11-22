@@ -15,7 +15,20 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
     if (x.pre === y.pre) return 0;
     if (!x.pre) return 1;
     if (!y.pre) return -1;
-    return x.pre < y.pre ? -1 : 1;
+    const cmpIdent = (xv, yv) => {
+      if (xv === yv) return 0;
+      const nx = /^\d+$/.test(xv), ny = /^\d+$/.test(yv);
+      if (nx && ny) return Number(xv) - Number(yv);
+      if (nx) return -1;
+      if (ny) return 1;
+      return xv < yv ? -1 : 1;
+    };
+    const sa = x.pre.split('.'), sb = y.pre.split('.');
+    for (let i = 0; i < Math.max(sa.length, sb.length); i++) {
+      const c = cmpIdent(sa[i] || '', sb[i] || '');
+      if (c !== 0) return c;
+    }
+    return 0;
   },
   findRoot = start => {
     let dir = path.resolve(start || process.cwd());
@@ -98,16 +111,21 @@ const check = async (options = {}) => {
 /**
  * 更新根目录 package.json 中可升级的依赖(不执行 npm install)
  * >查看定义:@see {@link update}
- * @param {{root?: string, refresh?: boolean}} [options] 同 check
+ * @param {{root?: string, refresh?: boolean, choose?: Function}} [options] 同 check;
+ *   choose 预发布选择回调,缺省取预发布版(传回 item.latest 则选稳定版)
  * @returns {Promise<object>} check 结果加 updated 已写入项
  */
 const update = async (options = {}) => {
   const result = await check(options), manifest = readManifest(result.root), updated = [];
   if (!result.upgrades.length) return { ...result, updated };
   for (const item of result.upgrades) {
+    const picked = item.prerelease
+      ? (options.choose ? await options.choose(item) : item.prerelease)
+      : item.latest,
+      next = item.prerelease && picked === item.prerelease ? item.prefix + item.prerelease : item.next;
     const block = manifest[item.field];
     if (!block || !(item.name in block)) continue;
-    block[item.name] = item.next, updated.push(item);
+    block[item.name] = next, updated.push({ ...item, picked, next });
   }
   if (updated.length) writeManifest(result.root, manifest);
   return { ...result, updated };

@@ -21,21 +21,31 @@ const raw = process.argv.slice(2), refresh = raw.some(arg => arg === '--refresh'
   skipPaint = item => item.reason.startsWith('星号') ? chalk.dim : chalk.yellow,
   formatSkip = (item, widths) => `      ${skipPaint(item)(padWidth(item.name, widths.name))}  `
     + chalk.gray(`${padWidth(item.range, widths.range)} · ${item.reason}`),
-  formatUpgrade = (item, widths) => `      ${chalk.cyanBright(padWidth(item.name, widths.name))}  `
-    + chalk.blue(`${padWidth(item.current, widths.current)} → `) + chalk.green(padWidth(item.latest, widths.latest))
-    + chalk.greenBright(' (最新)')
-    + (item.prerelease ? chalk.magenta(`  预发布 ${item.prerelease}`) : '')
-    + chalk.gray(`  ${item.field}`),
+  formatUpgrade = (item, widths, written = false) => {
+    const target = written ? (item.picked || item.latest) : item.latest,
+      tag = written
+        ? (item.prerelease && target === item.prerelease
+          ? chalk.magenta(' (预发布)') : chalk.greenBright(' (稳定版)'))
+        : chalk.greenBright(' (最新)');
+    return `      ${chalk.cyanBright(padWidth(item.name, widths.name))}  `
+      + chalk.blue(`${padWidth(item.current, widths.current)} → `) + chalk.green(padWidth(target, widths.latest))
+      + tag
+      + (!written && item.prerelease ? chalk.magenta(`  预发布 ${item.prerelease}`) : '')
+      + chalk.gray(`  ${item.field}`);
+  },
   printBody = (result, written = false) => {
-    const label = written ? '已更新' : '可升级', paint = written ? chalk.green : chalk.cyan;
-    if (result.upgrades.length) {
+    const label = written ? '已更新' : '可升级', paint = written ? chalk.green : chalk.cyan,
+      updMap = written ? new Map((result.updated || []).map(u => [u.name, u])) : null,
+      view = written ? result.upgrades.map(item => updMap.get(item.name) || item) : result.upgrades;
+    if (view.length) {
       const widths = {
-        name: Math.max(...result.upgrades.map(item => dispWidth(item.name))),
-        current: Math.max(...result.upgrades.map(item => dispWidth(item.current))),
-        latest: Math.max(...result.upgrades.map(item => dispWidth(item.latest)))
+        name: Math.max(...view.map(item => dispWidth(item.name))),
+        current: Math.max(...view.map(item => dispWidth(item.current))),
+        latest: Math.max(...view.map(item =>
+          dispWidth(written ? (item.picked || item.latest) : item.latest)))
       };
-      console.log(`    ${paint(label + ' ')}${chalk.greenBright(String(result.upgrades.length))}` + paint(' 项'));
-      for (const item of result.upgrades) console.log(formatUpgrade(item, widths));
+      console.log(`    ${paint(label + ' ')}${chalk.greenBright(String(view.length))}` + paint(' 项'));
+      for (const item of view) console.log(formatUpgrade(item, widths, written));
     }
     else console.log(`    ${chalk.cyan('状态 ')}${chalk.green(written ? '全部依赖已是最新' : '没有可升级的依赖')}`);
     if (result.skipped.length) {
@@ -102,10 +112,20 @@ const raw = process.argv.slice(2), refresh = raw.some(arg => arg === '--refresh'
     } catch (err) { fail(err); } finally { rl.close(); }
   },
   runUpdate = async refresh => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const choose = item => new Promise(resolve => {
+      console.log(`    ${chalk.cyan(item.name)}${chalk.gray(` 当前 ${item.current}`)}`);
+      console.log(`      ${chalk.green('1)')} 最新预发布版 ${chalk.magenta(item.prerelease)} ${chalk.gray('(默认)')}`);
+      console.log(`      ${chalk.green('2)')} 最新稳定版   ${chalk.green(item.latest)}`);
+      if (!process.stdin.isTTY) return resolve(item.prerelease);
+      rl.question(chalk.gray('    请输入 1/2,回车默认 1: '), ans => resolve(ans.trim() === '2'
+        ? item.latest : item.prerelease));
+    });
     try {
-      const result = await update({ refresh });
+      console.log(chalk.blueBright('\n  更新 package.json'));
+      const result = await update({ refresh, choose });
       printHead('更新 package.json', result.root), printWarn(result.warnings), printBody(result, true);
-    } catch (err) { fail(err); }
+    } catch (err) { fail(err); } finally { rl.close(); }
   };
 
 // 命令以简写为默认用法;全写兼容:check=c, update=u, install=i
