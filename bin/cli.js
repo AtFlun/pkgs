@@ -3,16 +3,19 @@ import chalk from 'chalk';
 import { check, install, update } from '../index.js';
 
 const raw = process.argv.slice(2), refresh = raw.some(arg => arg === '--refresh' || arg === '-r'),
-  rest = raw.filter(arg => arg !== '--refresh' && arg !== '-r'), cmd = rest[0];
-
-const dispWidth = text => {
-  let width = 0;
-  for (const ch of text) width += ch.codePointAt(0) > 127 ? 2 : 1;
-  return width;
-},
+  rest = raw.filter(arg => arg !== '--refresh' && arg !== '-r'), cmd = rest[0],
+  dispWidth = text => {
+    let width = 0;
+    for (const ch of text) width += ch.codePointAt(0) > 127 ? 2 : 1;
+    return width;
+  },
   fail = err => {
     console.error(`    ${chalk.red('✗ ')}${chalk.gray(err?.message || String(err))}`);
     process.exitCode = 1;
+  },
+  padWidth = (text, width) => {
+    const current = dispWidth(text);
+    return current >= width ? text : text + ' '.repeat(width - current);
   },
   skipPaint = item => item.reason.startsWith('星号') ? chalk.dim : chalk.yellow,
   formatSkip = (item, widths) => `      ${skipPaint(item)(padWidth(item.name, widths.name))}  `
@@ -20,10 +23,6 @@ const dispWidth = text => {
   formatUpgrade = (item, widths) => `      ${chalk.cyanBright(padWidth(item.name, widths.name))}  `
     + chalk.blue(`${padWidth(item.current, widths.current)} → `) + chalk.green(padWidth(item.latest, widths.latest))
     + chalk.greenBright(' (最新)') + chalk.gray(`  ${item.field}`),
-  padWidth = (text, width) => {
-    const current = dispWidth(text);
-    return current >= width ? text : text + ' '.repeat(width - current);
-  },
   printBody = (result, written = false) => {
     const label = written ? '已更新' : '可升级', paint = written ? chalk.green : chalk.cyan;
     if (result.upgrades.length) {
@@ -32,24 +31,22 @@ const dispWidth = text => {
         current: Math.max(...result.upgrades.map(item => dispWidth(item.current))),
         latest: Math.max(...result.upgrades.map(item => dispWidth(item.latest)))
       };
-      console.log(`    ${paint(label + ' ')}${chalk.greenBright(String(result.upgrades.length))}`
-        + paint(' 项'));
+      console.log(`    ${paint(label + ' ')}${chalk.greenBright(String(result.upgrades.length))}` + paint(' 项'));
       for (const item of result.upgrades) console.log(formatUpgrade(item, widths));
-    } else console.log(`    ${chalk.cyan('状态 ')}${chalk.green(written ? '全部依赖已是最新' : '没有可升级的依赖')}`);
+    }
+    else console.log(`    ${chalk.cyan('状态 ')}${chalk.green(written ? '全部依赖已是最新' : '没有可升级的依赖')}`);
     if (result.skipped.length) {
       const widths = {
         name: Math.max(...result.skipped.map(item => dispWidth(item.name))),
         range: Math.max(...result.skipped.map(item => dispWidth(item.range)))
       };
-      console.log(`    ${chalk.yellow('跳过 ')}${chalk.yellowBright(String(result.skipped.length))}`
-        + chalk.yellow(' 项'));
+      console.log(`    ${chalk.yellow('跳过 ')}${chalk.yellowBright(String(result.skipped.length))}` + chalk.yellow(' 项'));
       for (const item of result.skipped) console.log(formatSkip(item, widths));
     }
     console.log('');
   },
   printHead = (title, root) => {
-    console.log(chalk.blueBright(`\n  ${title}`));
-    console.log(`    ${chalk.cyan('根目录 ')}${chalk.gray(root)}`);
+    console.log(chalk.blueBright(`\n  ${title}`)), console.log(`    ${chalk.cyan('根目录 ')}${chalk.gray(root)}`);
   },
   printHelp = () => {
     const cmdLine = (name, desc) => `      ${chalk.cyanBright(name.padEnd(12))}${chalk.gray(desc)}`,
@@ -57,9 +54,9 @@ const dispWidth = text => {
     console.log([
       `  ${chalk.blueBright('用法:')} pags <命令> [选项]`, '',
       grp('命令'),
-      cmdLine('check', '查询项目中可升级的依赖'),
-      cmdLine('update', '更新 package.json 中的依赖版本,不执行安装'),
-      cmdLine('install', '执行安装最新依赖,等同于 update + npm install'),
+      cmdLine('c', '查询项目中可升级的依赖(全写 check)'),
+      cmdLine('u', '更新 package.json 中的依赖版本,不执行安装(全写 update)'),
+      cmdLine('i', '执行安装最新依赖,等同于 u + npm install(全写 install)'),
       cmdLine('help', '输出本帮助'), '',
       grp('选项'),
       cmdLine('-r', '重新查询 registry,忽略 1 小时缓存;完整写法 --refresh'), '',
@@ -90,13 +87,13 @@ const dispWidth = text => {
   runUpdate = async refresh => {
     try {
       const result = await update({ refresh });
-      printHead('更新 package.json', result.root), printWarn(result.warnings);
-      printBody(result, true);
+      printHead('更新 package.json', result.root), printWarn(result.warnings), printBody(result, true);
     } catch (err) { fail(err); }
   };
 
+// 命令以简写为默认用法;全写兼容:check=c, update=u, install=i
 if (!cmd || cmd === 'help' || cmd === '-h' || cmd === '--help') printHelp();
-else if (cmd === 'check') await runCheck(refresh);
-else if (cmd === 'update') await runUpdate(refresh);
-else if (cmd === 'install') await runInstall(refresh);
+else if (cmd === 'c' || cmd === 'check') await runCheck(refresh);
+else if (cmd === 'u' || cmd === 'update') await runUpdate(refresh);
+else if (cmd === 'i' || cmd === 'install') await runInstall(refresh);
 else fail(new Error(`未知命令: ${cmd}`)), printHelp();
