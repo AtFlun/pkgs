@@ -45,7 +45,10 @@
     "type": "git",
     "url": "git+https://github.com/AtFlun/pkgs.git"
   },
-  "gitee": "https://gitee.com/AtFlun/pkgs.git",
+  "gitee": {
+    "type": "git",
+    "url": "git+https://gitee.com/AtFlun/pkgs.git"
+  },
   "homepage": "https://github.com/AtFlun/pkgs#readme",
   "bugs": {
     "url": "https://github.com/AtFlun/pkgs/issues"
