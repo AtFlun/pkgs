@@ -22,8 +22,8 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
       if (nx) return -1;
       if (ny) return 1;
       return xv < yv ? -1 : 1;
-    };
-    const sa = x.pre.split('.'), sb = y.pre.split('.');
+    }, sa = x.pre.split('.'), sb = y.pre.split('.');
+
     for (let i = 0; i < Math.max(sa.length, sb.length); i++) {
       const c = cmpIdent(sa[i] || '', sb[i] || '');
       if (c !== 0) return c;
@@ -144,8 +144,20 @@ const install = async (options = {}) => {
     const picked = item.prerelease ? (options.choose ? await options.choose(item) : item.prerelease) : item.latest,
       next = item.prerelease && picked === item.prerelease ? item.prefix + item.prerelease : item.next;
     try {
-      execFileSync(npm, ['install', `${item.name}@${picked}`],
-        { cwd: result.root, stdio: options.stdio || 'pipe', shell: false });
+      // 优先直调 npm-cli.js(shell:false,规避 DEP0190 与 win32 的 npm.cmd EINVAL);找不到再回退 npm.cmd
+      const npmCli = (process.env.npm_execpath && fs.existsSync(process.env.npm_execpath))
+        ? process.env.npm_execpath
+        : (() => {
+          const guess = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+          return fs.existsSync(guess) ? guess : null;
+        })();
+      if (npmCli) {
+        execFileSync(process.execPath, [npmCli, 'install', `${item.name}@${picked}`],
+          { cwd: result.root, stdio: options.stdio || 'pipe', shell: false });
+      } else {
+        execFileSync(npm, ['install', `${item.name}@${picked}`],
+          { cwd: result.root, stdio: options.stdio || 'pipe', shell: true });
+      }
       const block = manifest[item.field];
       if (block && item.name in block) block[item.name] = next;
       installed.push({ ...item, picked, next });

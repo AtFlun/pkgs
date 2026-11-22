@@ -18,8 +18,8 @@ const CACHE_FILE = path.join(os.homedir(), '.pags-cache.json'), CACHE_TTL = 3600
       if (nx) return -1;
       if (ny) return 1;
       return x < y ? -1 : 1;
-    };
-    const sa = pa[1].split('.'), sb = pb[1].split('.');
+    }, sa = pa[1].split('.'), sb = pb[1].split('.');
+
     for (let i = 0; i < Math.max(sa.length, sb.length); i++) {
       const c = cmpIdent(sa[i] || '', sb[i] || '');
       if (c !== 0) return c;
