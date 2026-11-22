@@ -4,56 +4,12 @@ import path from 'path';
 
 const CACHE_FILE = path.join(os.homedir(), '.pags-cache.json'), CACHE_TTL = 3600 * 1000,
   REGISTRY = (process.env.npm_config_registry || 'https://registry.npmjs.org').replace(/\/+$/, ''),
-  compareLoose = (a, b) => {
-    const pa = a.split('+')[0].split('-'), pb = b.split('+')[0].split('-'),
-      na = pa[0].split('.').map(n => Number(n) || 0), nb = pb[0].split('.').map(n => Number(n) || 0);
-    for (let i = 0; i < 3; i++) if ((na[i] || 0) !== (nb[i] || 0)) return (na[i] || 0) - (nb[i] || 0);
-    if (!pa[1] && !pb[1]) return 0;
-    if (!pa[1]) return 1;
-    if (!pb[1]) return -1;
-    const cmpIdent = (x, y) => {
-      if (x === y) return 0;
-      const nx = /^\d+$/.test(x), ny = /^\d+$/.test(y);
-      if (nx && ny) return Number(x) - Number(y);
-      if (nx) return -1;
-      if (ny) return 1;
-      return x < y ? -1 : 1;
-    }, sa = pa[1].split('.'), sb = pb[1].split('.');
-
-    for (let i = 0; i < Math.max(sa.length, sb.length); i++) {
-      const c = cmpIdent(sa[i] || '', sb[i] || '');
-      if (c !== 0) return c;
-    }
-    return 0;
-  },
   fetchLatest = async name => {
     try {
       const url = `${REGISTRY}/${name.replace('/', '%2f')}/latest`,
         res = await fetch(url, { signal: AbortSignal.timeout(5000) });
       if (!res.ok) return null;
       return (await res.json()).version || null;
-    } catch { return null; }
-  },
-  fetchPrerelease = async (name, timeout) => {
-    const enc = name.replace('/', '%2f');
-    try {
-      const tagRes = await fetch(`${REGISTRY}/-/package/${enc}/dist-tags`, { signal: AbortSignal.timeout(8000) });
-      if (tagRes.ok) {
-        const tags = await tagRes.json(), vals = Object.values(tags).filter(v => typeof v === 'string' && v.includes('-'));
-        let bestTag = null;
-        for (const v of vals) if (!bestTag || compareLoose(v, bestTag) > 0) bestTag = v;
-        if (bestTag) return bestTag;
-      }
-    } catch { }
-    try {
-      const res = await fetch(`${REGISTRY}/${enc}`, {
-        headers: { accept: 'application/vnd.npm.install-v1+json' }, signal: AbortSignal.timeout(timeout || 5000)
-      });
-      if (!res.ok) return null;
-      const versions = Object.keys((await res.json()).versions || {});
-      let best = null;
-      for (const v of versions) if (v.includes('-') && (!best || compareLoose(v, best) > 0)) best = v;
-      return best;
     } catch { return null; }
   },
   readCache = () => {
@@ -65,6 +21,57 @@ const CACHE_FILE = path.join(os.homedir(), '.pags-cache.json'), CACHE_TTL = 3600
   },
   writeCache = data => {
     try { fs.writeFileSync(CACHE_FILE, JSON.stringify({ registry: REGISTRY, ts: Date.now(), data })); } catch { }
+  };
+
+/**
+ * 比较两个语义化版本(忽略 build 元数据,预发布版低于对应正式版)
+ * >查看定义:@see {@link compareVer}
+ * @param {string} a 左版本
+ * @param {string} b 右版本
+ * @returns {number} a 大于 b 返回正、小于返回负、相等返回 0
+ */
+const compareVer = (a, b) => {
+  const pa = a.split('+')[0].split('-'), pb = b.split('+')[0].split('-'),
+    na = pa[0].split('.').map(n => Number(n) || 0), nb = pb[0].split('.').map(n => Number(n) || 0);
+  for (let i = 0; i < 3; i++) if ((na[i] || 0) !== (nb[i] || 0)) return (na[i] || 0) - (nb[i] || 0);
+  if (!pa[1] && !pb[1]) return 0;
+  if (!pa[1]) return 1;
+  if (!pb[1]) return -1;
+  const cmpIdent = (x, y) => {
+    if (x === y) return 0;
+    const nx = /^\d+$/.test(x), ny = /^\d+$/.test(y);
+    if (nx && ny) return Number(x) - Number(y);
+    if (nx) return -1;
+    if (ny) return 1;
+    return x < y ? -1 : 1;
+  }, sa = pa[1].split('.'), sb = pb[1].split('.');
+  for (let i = 0; i < Math.max(sa.length, sb.length); i++) {
+    const c = cmpIdent(sa[i] || '', sb[i] || '');
+    if (c !== 0) return c;
+  }
+  return 0;
+},
+  fetchPrerelease = async (name, timeout) => {
+    const enc = name.replace('/', '%2f');
+    try {
+      const tagRes = await fetch(`${REGISTRY}/-/package/${enc}/dist-tags`, { signal: AbortSignal.timeout(8000) });
+      if (tagRes.ok) {
+        const tags = await tagRes.json(), vals = Object.values(tags).filter(v => typeof v === 'string' && v.includes('-'));
+        let bestTag = null;
+        for (const v of vals) if (!bestTag || compareVer(v, bestTag) > 0) bestTag = v;
+        if (bestTag) return bestTag;
+      }
+    } catch { }
+    try {
+      const res = await fetch(`${REGISTRY}/${enc}`, {
+        headers: { accept: 'application/vnd.npm.install-v1+json' }, signal: AbortSignal.timeout(timeout || 5000)
+      });
+      if (!res.ok) return null;
+      const versions = Object.keys((await res.json()).versions || {});
+      let best = null;
+      for (const v of versions) if (v.includes('-') && (!best || compareVer(v, best) > 0)) best = v;
+      return best;
+    } catch { return null; }
   };
 
 /**
@@ -100,4 +107,4 @@ const resolvePrerelease = async names => {
   return { data, online: Object.keys(data).length > 0 };
 };
 
-export { resolveLatest, resolvePrerelease };
+export { compareVer, resolveLatest, resolvePrerelease };

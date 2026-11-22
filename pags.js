@@ -1,35 +1,14 @@
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { resolveLatest, resolvePrerelease } from './net.js';
+import {
+  compareVer,
+  resolveLatest,
+  resolvePrerelease,
+} from './net.js';
 
 const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'],
   SEMVER = /^(?<prefix>\^|~|>=|<=|>|<|=)?(?<version>\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/,
-  parseVer = text => {
-    const [core, pre] = String(text).split('+')[0].split('-'), nums = core.split('.').map(n => Number(n) || 0);
-    return { nums, pre: pre || '' };
-  },
-  compareVer = (left, right) => {
-    const x = parseVer(left), y = parseVer(right);
-    for (let i = 0; i < 3; i++)  if ((x.nums[i] || 0) !== (y.nums[i] || 0)) return (x.nums[i] || 0) - (y.nums[i] || 0);
-    if (x.pre === y.pre) return 0;
-    if (!x.pre) return 1;
-    if (!y.pre) return -1;
-    const cmpIdent = (xv, yv) => {
-      if (xv === yv) return 0;
-      const nx = /^\d+$/.test(xv), ny = /^\d+$/.test(yv);
-      if (nx && ny) return Number(xv) - Number(yv);
-      if (nx) return -1;
-      if (ny) return 1;
-      return xv < yv ? -1 : 1;
-    }, sa = x.pre.split('.'), sb = y.pre.split('.');
-
-    for (let i = 0; i < Math.max(sa.length, sb.length); i++) {
-      const c = cmpIdent(sa[i] || '', sb[i] || '');
-      if (c !== 0) return c;
-    }
-    return 0;
-  },
   findRoot = start => {
     let dir = path.resolve(start || process.cwd());
     while (true) {
@@ -151,13 +130,11 @@ const install = async (options = {}) => {
           const guess = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
           return fs.existsSync(guess) ? guess : null;
         })();
-      if (npmCli) {
-        execFileSync(process.execPath, [npmCli, 'install', `${item.name}@${picked}`],
-          { cwd: result.root, stdio: options.stdio || 'pipe', shell: false });
-      } else {
-        execFileSync(npm, ['install', `${item.name}@${picked}`],
-          { cwd: result.root, stdio: options.stdio || 'pipe', shell: true });
-      }
+      if (npmCli) execFileSync(process.execPath, [npmCli, 'install', `${item.name}@${picked}`],
+        { cwd: result.root, stdio: options.stdio || 'pipe', shell: false });
+      else execFileSync(npm, ['install', `${item.name}@${picked}`],
+        { cwd: result.root, stdio: options.stdio || 'pipe', shell: true });
+
       const block = manifest[item.field];
       if (block && item.name in block) block[item.name] = next;
       installed.push({ ...item, picked, next });
