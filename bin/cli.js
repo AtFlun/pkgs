@@ -11,8 +11,7 @@ const raw = process.argv.slice(2), refresh = raw.some(arg => arg === '--refresh'
     return width;
   },
   fail = err => {
-    console.error(`    ${chalk.red('✗ ')}${chalk.gray(err?.message || String(err))}`);
-    process.exitCode = 1;
+    console.error(`    ${chalk.red('✗ ')}${chalk.gray(err?.message || String(err))}`), process.exitCode = 1;
   },
   padWidth = (text, width) => {
     const current = dispWidth(text);
@@ -23,10 +22,8 @@ const raw = process.argv.slice(2), refresh = raw.some(arg => arg === '--refresh'
     + chalk.gray(`${padWidth(item.range, widths.range)} · ${item.reason}`),
   formatUpgrade = (item, widths, written = false) => {
     const target = written ? (item.picked || item.latest) : item.latest,
-      tag = written
-        ? (item.prerelease && target === item.prerelease
-          ? chalk.magenta(' (预发布)') : chalk.greenBright(' (稳定版)'))
-        : chalk.greenBright(' (最新)');
+      tag = written ? (item.prerelease && target === item.prerelease
+        ? chalk.magenta(' (预发布)') : chalk.greenBright(' (稳定版)')) : chalk.greenBright(' (最新)');
     return `      ${chalk.cyanBright(padWidth(item.name, widths.name))}  `
       + chalk.blue(`${padWidth(item.current, widths.current)} → `) + chalk.green(padWidth(target, widths.latest))
       + tag
@@ -41,8 +38,7 @@ const raw = process.argv.slice(2), refresh = raw.some(arg => arg === '--refresh'
       const widths = {
         name: Math.max(...view.map(item => dispWidth(item.name))),
         current: Math.max(...view.map(item => dispWidth(item.current))),
-        latest: Math.max(...view.map(item =>
-          dispWidth(written ? (item.picked || item.latest) : item.latest)))
+        latest: Math.max(...view.map(item => dispWidth(written ? (item.picked || item.latest) : item.latest)))
       };
       console.log(`    ${paint(label + ' ')}${chalk.greenBright(String(view.length))}` + paint(' 项'));
       for (const item of view) console.log(formatUpgrade(item, widths, written));

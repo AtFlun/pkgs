@@ -1,11 +1,7 @@
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import {
-  compareVer,
-  resolveLatest,
-  resolvePrerelease,
-} from './net.js';
+import { compareVer, resolveLatest, resolvePrerelease } from './net.js';
 
 const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'],
   SEMVER = /^(?<prefix>\^|~|>=|<=|>|<|=)?(?<version>\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/,
@@ -124,8 +120,7 @@ const install = async (options = {}) => {
       next = item.prerelease && picked === item.prerelease ? item.prefix + item.prerelease : item.next;
     try {
       // 优先直调 npm-cli.js(shell:false,规避 DEP0190 与 win32 的 npm.cmd EINVAL);找不到再回退 npm.cmd
-      const npmCli = (process.env.npm_execpath && fs.existsSync(process.env.npm_execpath))
-        ? process.env.npm_execpath
+      const npmCli = (process.env.npm_execpath && fs.existsSync(process.env.npm_execpath)) ? process.env.npm_execpath
         : (() => {
           const guess = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
           return fs.existsSync(guess) ? guess : null;
