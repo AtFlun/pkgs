@@ -1,24 +1,22 @@
-# @flun/flun
+# @flun/pags
 
 ## 简介
 
-Flun 生态包索引:列出全部官方包、查看用途与安装命令、一键打开文档;
+Flun 依赖升级工具:查询项目中可升级的依赖,写新版本到根目录 package.json,安装最新依赖;
 
-收录清单见包内 `packages.json`;命令行运行 `npx @flun/flun pkgs` 可查看全部包及安装状态;
-
-具体 API 与用法见各包自身文档,本包不重新导出子包功能;
+提供 `check`、`update`、`install` 三个函数,以及 `pags` 命令行;库入口只导出这三个函数,联网查询与本地缓存逻辑在内部完成;
 
 ---
 
 ## 特性
 
-- 列出全部官方包,按已装/未装分组,显示描述与安装状态;
-- 单包详情显示描述、安装命令与版本,已装包打开本地 `README.md`,未装包打开 npm 页面;
-- `search` 子命令按包名、描述中的关键字搜索;
-- 版本双轨显示:本地已装版本与 npm 最新版本对比,可升级项标为 `旧 → 新 (最新)`;
-- 联网失败或超时时降级为清单记录的版本,不中断使用;
+- `check` 查询根目录 package.json 中可升级的依赖,返回可升级项、跳过项与联网状态;
+- `update` 把可升级版本写回根目录 package.json,不执行 npm install;
+- `install` 逐包执行 `npm install <name>@<latest>`,成功计入 installed、失败计入 failed 且不中断继续下一个;
+- 版本对比忽略 build 元数据,预发布版低于对应正式版;缺省选预发布版,`choose` 回调可改选稳定版;
 - npm 版本查询缓存 1 小时,`-r` 或 `--refresh` 可重新查询最新版本;
-- 执行任意命令后检查本包自身是否有新版,有则提示更新命令,避免全局安装长期滞后;
+- 联网失败或超时时降级处理并标注离线状态,不中断使用;
+- 支持 `dependencies`、`devDependencies`、`optionalDependencies`、`peerDependencies` 四个字段,工作区与本地引用等非常规范围自动跳过;
 
 ---
 
@@ -27,18 +25,17 @@ Flun 生态包索引:列出全部官方包、查看用途与安装命令、一�
 随包发布的文件:
 
 ```
-@flun/flun/
+@flun/pags/
 ├── bin/
-│   └── cli.js       命令行入口(bin: flun)
-├── flun.js          list / info / search / stats 四个函数
-├── index.js         库入口,转发 flun.js 的导出
-├── net.js           联网查询最新版本与本地缓存
-├── index.d.ts       类型声明
-├── packages.json    包清单数据
+│   └── cli.js       命令行入口(bin: pags)
 ├── CHANGELOG.md     更新日志
 ├── README.md        本文件
-├── package.json     包配置
-└── LICENSE          许可
+├── index.d.ts       类型声明
+├── index.js         库入口,转发 pags.js 的导出
+├── net.js           联网查询最新版本与本地缓存
+├── pags.js          check / update / install 三个函数
+├── LICENSE          许可
+└── package.json     包配置
 ```
 
 ---
@@ -55,7 +52,7 @@ Flun 生态包索引:列出全部官方包、查看用途与安装命令、一�
 ```json
 {
   "allowScripts": {
-    "@flun/flun": true
+    "@flun/pags": true
   }
 }
 ```
@@ -65,10 +62,9 @@ Flun 生态包索引:列出全部官方包、查看用途与安装命令、一�
 ## 安装
 
 ```sh
-npm i -D @flun/flun # 项目内安装(作为开发工具)
+npm i -D @flun/pags # 项目内安装(作为开发工具)
 
-npm i -g @flun/flun # 全局安装(建议);之后使用 `flun` 查看用法
-
+npm i -g @flun/pags # 全局安装(建议);之后使用 `pags help` 查看用法
 ```
 
 ---
@@ -78,47 +74,92 @@ npm i -g @flun/flun # 全局安装(建议);之后使用 `flun` 查看用法
 ### 快速开始
 
 ```sh
-npx @flun/flun pkgs
+npx @flun/pags c
 ```
 
 ### 子命令
 
-| 参数              | 作用                                                |
-| ----------------- | --------------------------------------------------- |
-| `pkgs`            | 列出全部包(按已装/未装分组)                         |
-| `search <关键字>` | 按包名、描述中的关键字搜索                          |
-| `info <包名>`     | 查看单包详情(已装打开本地 README,未装打开 npm 页面) |
-| `stats`           | 输出收录包时间、数量与最高版本                      |
+| 参数           | 作用                                      |
+| -------------- | ----------------------------------------- |
+| `c`, `check`   | 查询项目中可升级的依赖                    |
+| `u`, `update`  | 更新 package.json 中的依赖版本,不执行安装 |
+| `i`, `install` | 逐包安装最新依赖,失败不中断继续下一个     |
+| `help`         | 输出本帮助                                |
 
 ### 选项
 
-| 参数              | 作用                                                              |
-| ----------------- | ----------------------------------------------------------------- |
-| `-r`, `--refresh` | 重新查询 npm 最新版本(忽略 1 小时缓存,仅对 `pkgs` 与 `info` 生效) |
+| 参数              | 作用                              |
+| ----------------- | --------------------------------- |
+| `-r`, `--refresh` | 重新查询 registry,忽略 1 小时缓存 |
 
-无参数、`help`、`-h`、`--help` 输出帮助;全局安装后把 `npx @flun/flun` 换成 `flun`;
+无参数、`help`、`-h`、`--help` 输出帮助;全局安装后把 `npx @flun/pags` 换成 `pags`;
 
 ---
 
 ## 函数方式
 
-导入 `list`、`info`、`search`、`stats` 四个函数:
+导入 `check`、`update`、`install` 三个函数:
 
 ```js
-import { list, info, search, stats } from '@flun/flun';
+import { check, update, install } from '@flun/pags';
 
-list();                // 全部包的元数据数组
-info('@flun/mailer');  // 单包详情,不存在返回 null
-search('ssl');         // 按关键字搜索,返回匹配的包列表;
-stats();               // 返回收录包时间、收录包数量与收录最高版本;
+const r1 = await check();     // 查询可升级依赖,返回 root、upgrades、skipped、online、warnings
+const r2 = await update();    // 把可升级版本写回 package.json,追加 updated 已写入项
+const r3 = await install();   // 逐包安装最新依赖,追加 installed 成功项、failed 失败项与 command
 ```
 
-四个库函数只读取包内 `packages.json`,不联网;CLI 会查询 npm registry 显示最新版本,带 1 小时缓存,
-联网失败或单次请求超时(5 秒)时降级为本地版本并标注 `(离线)`;
+### 配置对象
+
+三个函数均接受可选配置对象;命令行没有的预发布选择,在函数方式里通过 `choose` 回调完成:
+
+| 字段      | 用于                | 说明                                                              |
+| --------- | ------------------- | ----------------------------------------------------------------- |
+| `root`    | 三者                | 指定项目根目录;默认从当前工作目录向上查找 package.json            |
+| `refresh` | 三者                | 忽略 1 小时缓存,强制查询 registry                                 |
+| `choose`  | `update`、`install` | 预发布选择回调;**缺省取预发布版**,返回 `item.latest` 则改选稳定版  |
+| `stdio`   | `install`           | 透传给 npm install 的标准 IO 方式                                 |
+
+`check` 不写回,没有 `choose`;它的每个可升级项同时给出 `latest`(稳定最新)与 `prerelease`(最高预发布),供自行判断;
+
+### 预发布选择(choose)
+
+当某依赖存在预发布版本时,`update` 与 `install` 默认选预发布版;传入 `choose` 回调可逐项决定选哪个。回调为**异步**,入参是整条升级项
+`{ name, field, range, prefix, current, latest, prerelease, next }`,**返回值决定安装的版本**:返回 `item.prerelease` 选预发布,返回
+`item.latest` 选稳定版;某项无预发布(`prerelease` 为空)时始终用 `item.latest`,不走回调;
+
+```js
+// 1) 默认行为:有预发布就选预发布,无需传 choose
+await update();
+
+// 2) 全部改选稳定版:回调统一返回 item.latest
+await update({ choose: (item) => item.latest });
+await install({ choose: (item) => item.latest });
+
+// 3) 全部选预发布(等价默认,显式写出)
+await install({ choose: (item) => item.prerelease });
+
+// 4) 按包名区分:指定包走稳定版,其余走预发布
+const stableOnly = new Set(['typescript', 'webpack']);
+await install({
+  refresh: true,
+  stdio: 'inherit',
+  choose: (item) => (stableOnly.has(item.name) ? item.latest : item.prerelease),
+});
+
+// 5) 异步回调:装前查询/确认(回调支持 async,内部会 await)
+await update({
+  choose: async (item) => {
+    const useStable = await askUser(item.name); // 自定义异步逻辑
+    return useStable ? item.latest : item.prerelease;
+  },
+});
+```
+
+命令行用 `请输入 1/2` 交互完成同样选择,函数方式则以 `choose` 回调替代该交互;
 
 ---
 
-## 许可证
+## 许可证## 许可证
 
 ISC
 
@@ -126,7 +167,7 @@ ISC
 
 ## 贡献
 
-- 主页:[npm 包页面](https://www.npmjs.com/package/@flun/flun#readme)
-- 源码:[GitHub](https://github.com/AtFlun/flun)
-- 中国:[gitee](https://gitee.com/AtFlun/flun.git)
-- 问题反馈:[Issues](https://github.com/AtFlun/flun/issues)
+- 主页:[npm 包页面](https://www.npmjs.com/package/@flun/pags#readme)
+- 源码:[GitHub](https://github.com/AtFlun/pkgs)
+- 中国:[gitee](https://gitee.com/AtFlun/pkgs.git)
+- 问题反馈:[Issues](https://github.com/AtFlun/pkgs/issues)
