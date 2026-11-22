@@ -87,15 +87,15 @@ const raw = process.argv.slice(2), refresh = raw.some(arg => arg === '--refresh'
     } catch (err) { fail(err); }
   },
   runInstall = async refresh => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    const choose = item => new Promise(resolve => {
-      console.log(`    ${chalk.cyan(item.name)}${chalk.gray(` 当前 ${item.current}`)}`);
-      console.log(`      ${chalk.green('1)')} 最新预发布版 ${chalk.magenta(item.prerelease)} ${chalk.gray('(默认)')}`);
-      console.log(`      ${chalk.green('2)')} 最新稳定版   ${chalk.green(item.latest)}`);
-      if (!process.stdin.isTTY) return resolve(item.prerelease);
-      rl.question(chalk.gray('    请输入 1/2,回车默认 1: '), ans => resolve(ans.trim() === '2'
-        ? item.latest : item.prerelease));
-    });
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout }),
+      choose = item => new Promise(resolve => {
+        console.log(`    ${chalk.cyan(item.name)}${chalk.gray(` 当前 ${item.current}`)}`);
+        console.log(`      ${chalk.green('1)')} 最新预发布版 ${chalk.magenta(item.prerelease)} ${chalk.gray('(默认)')}`);
+        console.log(`      ${chalk.green('2)')} 最新稳定版   ${chalk.green(item.latest)}`);
+        if (!process.stdin.isTTY) return resolve(item.prerelease);
+        rl.question(chalk.gray('    请输入 1/2,回车默认 1: '), ans => resolve(ans.trim() === '2'
+          ? item.latest : item.prerelease));
+      });
     try {
       console.log(chalk.blueBright('\n  更新并安装依赖'));
       const result = await install({ refresh, choose });
@@ -112,15 +112,15 @@ const raw = process.argv.slice(2), refresh = raw.some(arg => arg === '--refresh'
     } catch (err) { fail(err); } finally { rl.close(); }
   },
   runUpdate = async refresh => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    const choose = item => new Promise(resolve => {
-      console.log(`    ${chalk.cyan(item.name)}${chalk.gray(` 当前 ${item.current}`)}`);
-      console.log(`      ${chalk.green('1)')} 最新预发布版 ${chalk.magenta(item.prerelease)} ${chalk.gray('(默认)')}`);
-      console.log(`      ${chalk.green('2)')} 最新稳定版   ${chalk.green(item.latest)}`);
-      if (!process.stdin.isTTY) return resolve(item.prerelease);
-      rl.question(chalk.gray('    请输入 1/2,回车默认 1: '), ans => resolve(ans.trim() === '2'
-        ? item.latest : item.prerelease));
-    });
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout }),
+      choose = item => new Promise(resolve => {
+        console.log(`    ${chalk.cyan(item.name)}${chalk.gray(` 当前 ${item.current}`)}`);
+        console.log(`      ${chalk.green('1)')} 最新预发布版 ${chalk.magenta(item.prerelease)} ${chalk.gray('(默认)')}`);
+        console.log(`      ${chalk.green('2)')} 最新稳定版   ${chalk.green(item.latest)}`);
+        if (!process.stdin.isTTY) return resolve(item.prerelease);
+        rl.question(chalk.gray('    请输入 1/2,回车默认 1: '), ans => resolve(ans.trim() === '2'
+          ? item.latest : item.prerelease));
+      });
     try {
       console.log(chalk.blueBright('\n  更新 package.json'));
       const result = await update({ refresh, choose });

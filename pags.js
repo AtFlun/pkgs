@@ -119,11 +119,9 @@ const update = async (options = {}) => {
   const result = await check(options), manifest = readManifest(result.root), updated = [];
   if (!result.upgrades.length) return { ...result, updated };
   for (const item of result.upgrades) {
-    const picked = item.prerelease
-      ? (options.choose ? await options.choose(item) : item.prerelease)
-      : item.latest,
-      next = item.prerelease && picked === item.prerelease ? item.prefix + item.prerelease : item.next;
-    const block = manifest[item.field];
+    const picked = item.prerelease ? (options.choose ? await options.choose(item) : item.prerelease) : item.latest,
+      next = item.prerelease && picked === item.prerelease ? item.prefix + item.prerelease : item.next,
+      block = manifest[item.field];
     if (!block || !(item.name in block)) continue;
     block[item.name] = next, updated.push({ ...item, picked, next });
   }
@@ -143,9 +141,7 @@ const install = async (options = {}) => {
   const result = await check(options), npm = process.platform === 'win32' ? 'npm.cmd' : 'npm',
     manifest = readManifest(result.root), installed = [], failed = [];
   for (const item of result.upgrades) {
-    const picked = item.prerelease
-      ? (options.choose ? await options.choose(item) : item.prerelease)
-      : item.latest,
+    const picked = item.prerelease ? (options.choose ? await options.choose(item) : item.prerelease) : item.latest,
       next = item.prerelease && picked === item.prerelease ? item.prefix + item.prerelease : item.next;
     try {
       execFileSync(npm, ['install', `${item.name}@${picked}`],
