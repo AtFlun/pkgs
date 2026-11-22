@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-const CACHE_FILE = path.join(os.homedir(), '.flun-pags-cache.json'), CACHE_TTL = 3600 * 1000,
+const CACHE_FILE = path.join(os.homedir(), '.pags-cache.json'), CACHE_TTL = 3600 * 1000,
   REGISTRY = (process.env.npm_config_registry || 'https://registry.npmjs.org').replace(/\/+$/, ''),
   fetchLatest = async name => {
     try {
