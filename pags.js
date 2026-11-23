@@ -43,6 +43,25 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
       eol = raw.includes('\r\n') ? '\r\n' : '\n', tail = /\r?\n$/.test(raw) ? eol : '',
       text = JSON.stringify(manifest, null, indent).replace(/\n/g, eol) + tail;
     fs.writeFileSync(file, text);
+  },
+  // 按 choose 选定版本:'p'/'prerelease' 取预发布(缺省),'s'/'stable' 取稳定版,也可传回调;返回 { picked, next }
+  pickVersion = async (item, choose) => {
+    const picked = item.prerelease
+      ? (choose === 's' || choose === 'stable' ? item.latest
+        : typeof choose === 'function' ? await choose(item) : item.prerelease)
+      : item.latest,
+      next = item.prerelease && picked === item.prerelease ? item.prefix + item.prerelease : item.next;
+    return { picked, next };
+  },
+  // 公共流程:check → 读 manifest → 逐项交给 handleItem → 按需写回;handleItem 可同步或异步
+  withUpgrades = async (options, handleItem) => {
+    const result = await check(options), manifest = readManifest(result.root), updated = [], installed = [], failed = [];
+    for (const item of result.upgrades) {
+      const { picked, next } = await pickVersion(item, options.choose);
+      await handleItem({ item, picked, next, manifest, result, updated, installed, failed });
+    }
+    if (updated.length || installed.length) writeManifest(result.root, manifest);
+    return { result, updated, installed, failed };
   };
 
 /**
@@ -86,57 +105,49 @@ const check = async (options = {}) => {
 /**
  * 更新根目录 package.json 中可升级的依赖(不执行 npm install)
  * >查看定义:@see {@link update}
- * @param {{root?: string, refresh?: boolean, choose?: Function}} [options] 同 check;
- *   choose 预发布选择回调,缺省取预发布版(传回 item.latest 则选稳定版)
+ * @param {{root?: string, refresh?: boolean, choose?: 'p'|'s'|Function}} [options] 同 check;
+ *   choose 预发布选择:'p'/'prerelease' 取预发布(缺省),'s'/'stable' 取稳定版,也可传回调 (item)=>version
  * @returns {Promise<object>} check 结果加 updated 已写入项
  */
 const update = async (options = {}) => {
-  const result = await check(options), manifest = readManifest(result.root), updated = [];
-  if (!result.upgrades.length) return { ...result, updated };
-  for (const item of result.upgrades) {
-    const picked = item.prerelease ? (options.choose ? await options.choose(item) : item.prerelease) : item.latest,
-      next = item.prerelease && picked === item.prerelease ? item.prefix + item.prerelease : item.next,
-      block = manifest[item.field];
-    if (!block || !(item.name in block)) continue;
+  const { result, updated } = await withUpgrades(options, ({ item, picked, next, manifest, updated }) => {
+    const block = manifest[item.field];
+    if (!block || !(item.name in block)) return;
     block[item.name] = next, updated.push({ ...item, picked, next });
-  }
-  if (updated.length) writeManifest(result.root, manifest);
+  });
   return { ...result, updated };
 };
 
 /**
- * 逐包升级并安装依赖:每个包单独执行 npm install <name>@<latest>,
+ * 逐包升级并安装依赖:每个包单独执行 npm install <name>@<picked>,
  * 成功写入 package.json 并计入 installed,失败计入 failed 且不中断继续下一个
  * >查看定义:@see {@link install}
- * @param {{root?: string, refresh?: boolean, stdio?: string, choose?: Function}} [options] 同 check;
- *   stdio 传给 npm;choose 预发布选择回调,缺省取预发布版
+ * @param {{root?: string, refresh?: boolean, stdio?: string, choose?: 'p'|'s'|Function}} [options] 同 check;
+ *   stdio 传给 npm;choose 同 update('p'/'s' 或回调)
  * @returns {Promise<object>} check 结果加 installed 成功项、failed 失败项、command(npm 命令名)
  */
 const install = async (options = {}) => {
-  const result = await check(options), npm = process.platform === 'win32' ? 'npm.cmd' : 'npm',
-    manifest = readManifest(result.root), installed = [], failed = [];
-  for (const item of result.upgrades) {
-    const picked = item.prerelease ? (options.choose ? await options.choose(item) : item.prerelease) : item.latest,
-      next = item.prerelease && picked === item.prerelease ? item.prefix + item.prerelease : item.next;
-    try {
-      // 优先直调 npm-cli.js(shell:false,规避 DEP0190 与 win32 的 npm.cmd EINVAL);找不到再回退 npm.cmd
-      const npmCli = (process.env.npm_execpath && fs.existsSync(process.env.npm_execpath)) ? process.env.npm_execpath
-        : (() => {
-          const guess = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
-          return fs.existsSync(guess) ? guess : null;
-        })();
-      if (npmCli) execFileSync(process.execPath, [npmCli, 'install', `${item.name}@${picked}`],
-        { cwd: result.root, stdio: options.stdio || 'pipe', shell: false });
-      else execFileSync(npm, ['install', `${item.name}@${picked}`],
-        { cwd: result.root, stdio: options.stdio || 'pipe', shell: true });
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm',
+    { result, installed, failed } = await withUpgrades(options, async ({ item, picked, next, manifest, result, installed,
+      failed }) => {
+      try {
+        // 优先直调 npm-cli.js(shell:false,规避 DEP0190 与 win32 的 npm.cmd EINVAL);找不到再回退 npm.cmd
+        const npmCli = (process.env.npm_execpath && fs.existsSync(process.env.npm_execpath)) ? process.env.npm_execpath
+          : (() => {
+            const guess = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+            return fs.existsSync(guess) ? guess : null;
+          })();
+        if (npmCli) execFileSync(process.execPath, [npmCli, 'install', `${item.name}@${picked}`],
+          { cwd: result.root, stdio: options.stdio || 'pipe', shell: false });
+        else execFileSync(npm, ['install', `${item.name}@${picked}`],
+          { cwd: result.root, stdio: options.stdio || 'pipe', shell: true });
 
-      const block = manifest[item.field];
-      if (block && item.name in block) block[item.name] = next;
-      installed.push({ ...item, picked, next });
-    }
-    catch (err) { failed.push({ ...item, reason: err.message || String(err) }); }
-  }
-  if (installed.length) writeManifest(result.root, manifest);
+        const block = manifest[item.field];
+        if (block && item.name in block) block[item.name] = next;
+        installed.push({ ...item, picked, next });
+      }
+      catch (err) { failed.push({ ...item, reason: err.message || String(err) }); }
+    });
   return { ...result, installed, failed, command: npm };
 };
 

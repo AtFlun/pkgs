@@ -110,56 +110,41 @@ const r3 = await install();   // 逐包安装最新依赖,追加 installed 成�
 
 ### 配置对象
 
-三个函数均接受可选配置对象;命令行没有的预发布选择,在函数方式里通过 `choose` 回调完成:
-
 | 字段      | 用于                | 说明                                                              |
 | --------- | ------------------- | ----------------------------------------------------------------- |
 | `root`    | 三者                | 指定项目根目录;默认从当前工作目录向上查找 package.json            |
 | `refresh` | 三者                | 忽略 1 小时缓存,强制查询 registry                                 |
-| `choose`  | `update`、`install` | 预发布选择回调;**缺省取预发布版**,返回 `item.latest` 则改选稳定版  |
+| `choose`  | `update`、`install` | 预发布选择:`'p'` 取预发布(缺省),`'s'` 取稳定版;也可传回调          |
 | `stdio`   | `install`           | 透传给 npm install 的标准 IO 方式                                 |
 
 `check` 不写回,没有 `choose`;它的每个可升级项同时给出 `latest`(稳定最新)与 `prerelease`(最高预发布),供自行判断;
 
 ### 预发布选择(choose)
 
-当某依赖存在预发布版本时,`update` 与 `install` 默认选预发布版;传入 `choose` 回调可逐项决定选哪个。回调为**异步**,入参是整条升级项
-`{ name, field, range, prefix, current, latest, prerelease, next }`,**返回值决定安装的版本**:返回 `item.prerelease` 选预发布,返回
-`item.latest` 选稳定版;某项无预发布(`prerelease` 为空)时始终用 `item.latest`,不走回调;
+当某依赖存在预发布版本时,只需给 `choose` 传一个字母决定选哪个:`'p'`(prerelease,缺省)选预发布,`'s'`(stable)选稳定版;
+不传 `choose` 时默认选预发布;某项无预发布时始终用稳定版,不看 `choose`;
 
 ```js
-// 1) 默认行为:有预发布就选预发布,无需传 choose
+// 默认:有预发布就选预发布
 await update();
 
-// 2) 全部改选稳定版:回调统一返回 item.latest
-await update({ choose: (item) => item.latest });
-await install({ choose: (item) => item.latest });
+// 选稳定版:传 's' 即可
+await update({ choose: 's' });
+await install({ choose: 's' });
 
-// 3) 全部选预发布(等价默认,显式写出)
-await install({ choose: (item) => item.prerelease });
+// 显式选预发布(等价缺省)
+await install({ choose: 'p' });
 
-// 4) 按包名区分:指定包走稳定版,其余走预发布
-const stableOnly = new Set(['typescript', 'webpack']);
-await install({
-  refresh: true,
-  stdio: 'inherit',
-  choose: (item) => (stableOnly.has(item.name) ? item.latest : item.prerelease),
-});
-
-// 5) 异步回调:装前查询/确认(回调支持 async,内部会 await)
-await update({
-  choose: async (item) => {
-    const useStable = await askUser(item.name); // 自定义异步逻辑
-    return useStable ? item.latest : item.prerelease;
-  },
-});
+// 搭配其他选项
+await install({ choose: 's', refresh: true, stdio: 'inherit' });
 ```
 
-命令行用 `请输入 1/2` 交互完成同样选择,函数方式则以 `choose` 回调替代该交互;
+高级用法:`choose` 也可传异步回调 `(item) => version`,按项自定义(入参为整条升级项,返回值决定装哪个版本);命令行用
+`请输入 1/2` 交互完成同样选择,函数方式以 `choose` 替代该交互;
 
 ---
 
-## 许可证## 许可证
+## 许可证## 许可证## 许可证
 
 ISC
 
