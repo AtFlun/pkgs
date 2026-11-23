@@ -13,14 +13,21 @@ const dispWidth = text => {
   formatSkip = (item, widths) => `      ${skipPaint(item)(padWidth(item.name, widths.name))}  `
     + chalk.gray(`${padWidth(item.range, widths.range)} · ${item.reason}`),
   formatUpgrade = (item, widths, written = false) => {
-    const target = written ? (item.picked || item.latest) : item.latest,
-      tag = written ? (item.prerelease && target === item.prerelease
-        ? chalk.magenta(' (预发布)') : chalk.greenBright(' (稳定版)')) : chalk.greenBright(' (最新)');
+    const target = item.target || item.latest,
+      tag = item.mode === 'pre' ? chalk.magenta(' (预发布)') : chalk.greenBright(written ? ' (稳定版)' : ' (最新)');
     return `      ${chalk.cyanBright(padWidth(item.name, widths.name))}  `
       + chalk.blue(`${padWidth(item.current, widths.current)} → `) + chalk.green(padWidth(target, widths.latest))
       + tag
-      + (!written && item.prerelease ? chalk.magenta(`  预发布 ${item.prerelease}`) : '')
       + chalk.gray(`  ${item.field}`);
+  },
+  printChoices = result => {
+    const list = (result.pending && result.pending.length) ? result.pending : (result.choices || []);
+    if (!list.length) return;
+    const width = Math.max(...list.map(item => dispWidth(item.name)));
+    console.log(`    ${chalk.yellow('待定 ')}${chalk.yellowBright(String(list.length))}${chalk.yellow(' 项,需要你选择')}`);
+    for (const item of list) console.log(
+      `      ${chalk.cyanBright(padWidth(item.name, width))}  `
+      + chalk.blue(`${item.current} 保持不变`) + chalk.gray(' 或切到稳定版 ') + chalk.green(item.latest));
   },
   printTitle = title => console.log(chalk.blueBright(`\n  ${title}`)),
   printRoot = root => console.log(`    ${chalk.cyan('根目录 ')}${chalk.gray(root)}`),
@@ -36,22 +43,23 @@ const dispWidth = text => {
       const widths = {
         name: Math.max(...view.map(item => dispWidth(item.name))),
         current: Math.max(...view.map(item => dispWidth(item.current))),
-        latest: Math.max(...view.map(item => dispWidth(written ? (item.picked || item.latest) : item.latest)))
+        latest: Math.max(...view.map(item => dispWidth(item.target || (written ? (item.picked || item.latest)
+          : item.latest))))
       };
       console.log(`    ${paint(label + ' ')}${chalk.greenBright(String(view.length))}` + paint(' 项'));
       for (const item of view) console.log(formatUpgrade(item, widths, written));
     }
-    else console.log(`    ${chalk.cyan('状态 ')}${chalk.green(written ? '全部依赖已是最新' : '没有可升级的依赖')}`);
+    else if (!(result.choices || []).length && !(result.pending || []).length)
+      console.log(`    ${chalk.cyan('状态 ')}${chalk.green(written ? '全部依赖已是最新' : '没有可升级的依赖')}`);
     if (result.skipped.length) {
       const widths = {
         name: Math.max(...result.skipped.map(item => dispWidth(item.name))),
         range: Math.max(...result.skipped.map(item => dispWidth(item.range)))
       };
-      console.log(`    ${chalk.yellow('跳过 ')}${chalk.yellowBright(String(result.skipped.length))}`
-        + chalk.yellow(' 项'));
+      console.log(`    ${chalk.yellow('跳过 ')}${chalk.yellowBright(String(result.skipped.length))}` + chalk.yellow(' 项'));
       for (const item of result.skipped) console.log(formatSkip(item, widths));
     }
-    console.log('');
+    printChoices(result), console.log('');
   },
   printInstall = result => {
     printRoot(result.root), printWarn(result.warnings);
@@ -66,4 +74,4 @@ const dispWidth = text => {
     }
   };
 
-export { printBody, printHead, printInstall, printRoot, printTitle, printWarn };
+export { printBody, printChoices, printHead, printInstall, printRoot, printTitle, printWarn };

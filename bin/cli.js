@@ -5,18 +5,27 @@ import { check, install, update } from '../index.js';
 import { printBody, printHead, printInstall, printTitle, printWarn } from '../render.js';
 
 let rl = null;
-
-const raw = process.argv.slice(2), refresh = raw.some(arg => arg === '--refresh' || arg === '-r'),
-  rest = raw.filter(arg => arg !== '--refresh' && arg !== '-r'), cmd = rest[0],
+const raw = process.argv.slice(2), stable = raw.some(arg => arg === '--stable' || arg === '-s'),
+  refresh = raw.some(arg => arg === '--refresh' || arg === '-r'),
+  rest = raw.filter(arg => !['--refresh', '-r', '--stable', '-s'].includes(arg)), cmd = rest[0],
   // 命令行靠询问决定预发布/稳定版;函数方式用 choose 传参,不交互
   askChoose = item => new Promise(resolve => {
-    rl || (rl = readline.createInterface({ input: process.stdin, output: process.stdout }));
+    const open = () => { rl || (rl = readline.createInterface({ input: process.stdin, output: process.stdout })); };
+    if (item.mode === 'choose') {
+      console.log(`    ${chalk.cyan(item.name)}${chalk.gray(` 当前 ${item.current},预发布已无更新`)}`);
+      console.log(`      ${chalk.green('1)')} 保持不变   ${chalk.gray('(默认)')}`);
+      console.log(`      ${chalk.green('2)')} 稳定版 ${chalk.green(item.latest)} ${chalk.gray('更高')}`);
+      if (!process.stdin.isTTY) return resolve(item.current);
+      open();
+      return rl.question(chalk.gray('    请输入 1/2,回车默认 1: '), ans => resolve(ans.trim() === '2' ? item.latest
+        : item.current));
+    }
     console.log(`    ${chalk.cyan(item.name)}${chalk.gray(` 当前 ${item.current}`)}`);
-    console.log(`      ${chalk.green('1)')} 最新预发布版 ${chalk.magenta(item.prerelease)} ${chalk.gray('(默认)')}`);
+    console.log(`      ${chalk.green('1)')} 最新预发布版 ${chalk.magenta(item.target)} ${chalk.gray('(默认)')}`);
     console.log(`      ${chalk.green('2)')} 最新稳定版   ${chalk.green(item.latest)}`);
-    if (!process.stdin.isTTY) return resolve(item.prerelease);
-    rl.question(chalk.gray('    请输入 1/2,回车默认 1: '), ans => resolve(ans.trim() === '2'
-      ? item.latest : item.prerelease));
+    if (!process.stdin.isTTY) return resolve(item.target);
+    open();
+    rl.question(chalk.gray('    请输入 1/2,回车默认 1: '), ans => resolve(ans.trim() === '2' ? item.latest : item.target));
   }),
   closeAsk = () => {
     if (!rl) return;
@@ -49,13 +58,13 @@ const raw = process.argv.slice(2), refresh = raw.some(arg => arg === '--refresh'
   runInstall = async refresh => {
     try {
       printTitle('更新并安装依赖');
-      const result = await install({ refresh, print: false, choose: askChoose });
+      const result = await install({ refresh, print: false, choose: stable ? 's' : askChoose });
       printInstall(result);
     } catch (err) { fail(err); } finally { closeAsk(); }
   },
   runUpdate = async refresh => {
     try {
-      const result = await update({ refresh, print: false, choose: askChoose });
+      const result = await update({ refresh, print: false, choose: stable ? 's' : askChoose });
       printHead('更新 package.json', result.root), printWarn(result.warnings), printBody(result, true);
     } catch (err) { fail(err); } finally { closeAsk(); }
   };
