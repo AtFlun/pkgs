@@ -94,7 +94,18 @@ const check = async (options = {}) => {
   const result = { root, upgrades, skipped, online, warnings };
   if (options.print !== false) printHead('检查可升级依赖', root), printWarn(warnings), printBody(result);
   return result;
-};
+},
+  // 抽出 update/install 共用骨架,差异由 handleItem 承担;依赖 check 与 writeManifest 故排其后
+  withUpgrades = async (options, handleItem) => {
+    const result = await check({ ...options, print: false }), manifest = readManifest(result.root),
+      updated = [], installed = [], failed = [];
+    for (const item of result.upgrades) {
+      const { picked, next } = await pickVersion(item, options.choose);
+      await handleItem({ item, picked, next, manifest, result, updated, installed, failed });
+    }
+    if (updated.length || installed.length) writeManifest(result.root, manifest);
+    return { result, updated, installed, failed };
+  };
 
 /**
  * 逐包升级并安装依赖,默认打印结果;每个包单独执行 npm install <name>@<picked>,
@@ -147,18 +158,6 @@ const update = async (options = {}) => {
   const out = { ...result, updated };
   if (options.print !== false) printHead('更新 package.json', out.root), printWarn(out.warnings), printBody(out, true);
   return out;
-};
-
-// 抽出 update/install 共用骨架,差异由 handleItem 承担;依赖 check 与 writeManifest 故排其后
-const withUpgrades = async (options, handleItem) => {
-  const result = await check({ ...options, print: false }), manifest = readManifest(result.root),
-    updated = [], installed = [], failed = [];
-  for (const item of result.upgrades) {
-    const { picked, next } = await pickVersion(item, options.choose);
-    await handleItem({ item, picked, next, manifest, result, updated, installed, failed });
-  }
-  if (updated.length || installed.length) writeManifest(result.root, manifest);
-  return { result, updated, installed, failed };
 };
 
 export { check, install, update };
