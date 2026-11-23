@@ -13,21 +13,25 @@ const dispWidth = text => {
   formatSkip = (item, widths) => `      ${skipPaint(item)(padWidth(item.name, widths.name))}  `
     + chalk.gray(`${padWidth(item.range, widths.range)} · ${item.reason}`),
   formatUpgrade = (item, widths, written = false) => {
-    const target = item.target || item.latest,
-      tag = item.mode === 'pre' ? chalk.magenta(' (预发布)') : chalk.greenBright(written ? ' (稳定版)' : ' (最新)');
+    const target = written ? (item.picked || item.next || item.target || item.latest) : (item.target || item.latest),
+      pre = /-[0-9A-Za-z.-]+$/.test(String(target).replace(/[\^~]|>=|<=|>|<|=/g, '')),
+      tag = pre ? chalk.magenta(' (预发布)') : chalk.greenBright(written ? ' (稳定版)' : ' (最新)');
     return `      ${chalk.cyanBright(padWidth(item.name, widths.name))}  `
       + chalk.blue(`${padWidth(item.current, widths.current)} → `) + chalk.green(padWidth(target, widths.latest))
       + tag
       + chalk.gray(`  ${item.field}`);
   },
   printChoices = result => {
-    const list = (result.pending && result.pending.length) ? result.pending : (result.choices || []);
+    const done = new Set((result.updated || []).map(item => item.name));
+    const base = result.updated ? (result.pending || []) : (result.choices || []);
+    const list = base.filter(item => !done.has(item.name));
     if (!list.length) return;
     const width = Math.max(...list.map(item => dispWidth(item.name)));
-    console.log(`    ${chalk.yellow('待定 ')}${chalk.yellowBright(String(list.length))}${chalk.yellow(' 项,需要你选择')}`);
+    console.log(`    ${chalk.cyan('可选 ')}${chalk.yellowBright(String(list.length))}${chalk.cyan(' 项(预发布无更新,稳定版更高)')}`);
     for (const item of list) console.log(
       `      ${chalk.cyanBright(padWidth(item.name, width))}  `
-      + chalk.blue(`${item.current} 保持不变`) + chalk.gray(' 或切到稳定版 ') + chalk.green(item.latest));
+      + chalk.gray('最新预发布 ') + chalk.magenta((item.prerelease || item.current))
+      + chalk.gray('   最新稳定版 ') + chalk.green(item.latest));
   },
   printTitle = title => console.log(chalk.blueBright(`\n  ${title}`)),
   printRoot = root => console.log(`    ${chalk.cyan('根目录 ')}${chalk.gray(root)}`),
