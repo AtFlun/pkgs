@@ -27,6 +27,7 @@
     "index.js",
     "net.js",
     "pags.js",
+    "render.js",
     "LICENSE"
   ],
   "author": "flun <open@flun.top>",

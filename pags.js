@@ -2,6 +2,7 @@ import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { compareVer, resolveLatest, resolvePrerelease } from './net.js';
+import { printBody, printHead, printInstall, printTitle, printWarn } from './render.js';
 
 const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'],
   SEMVER = /^(?<prefix>\^|~|>=|<=|>|<|=)?(?<version>\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/,
@@ -55,9 +56,10 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
   };
 
 /**
- * 查询根目录 package.json 中可升级的依赖
+ * 查询根目录 package.json 中可升级的依赖,默认打印结果
  * >查看定义:@see {@link check}
- * @param {{root?: string, refresh?: boolean}} [options] root 指定项目根目录;refresh 忽略缓存
+ * @param {{root?: string, refresh?: boolean, print?: boolean}} [options] root 指定项目根目录;
+ *   refresh 忽略缓存;print 传 false 时不打印,便于调用方自行输出
  * @returns {Promise<object>} root、upgrades、skipped、online、warnings
  */
 const check = async (options = {}) => {
@@ -89,26 +91,17 @@ const check = async (options = {}) => {
     if (compareVer(target, item.current) <= 0 && !(preTarget && compareVer(preTarget, item.current) > 0)) continue;
     upgrades.push({ ...item, latest: target, prerelease: preTarget, next: item.prefix + target });
   }
-  return { root, upgrades, skipped, online, warnings };
-},
-  // 抽出 update/install 共用骨架,差异由 handleItem 承担;依赖 writeManifest 故排其后
-  withUpgrades = async (options, handleItem) => {
-    const result = await check(options), manifest = readManifest(result.root),
-      updated = [], installed = [], failed = [];
-    for (const item of result.upgrades) {
-      const { picked, next } = await pickVersion(item, options.choose);
-      await handleItem({ item, picked, next, manifest, result, updated, installed, failed });
-    }
-    if (updated.length || installed.length) writeManifest(result.root, manifest);
-    return { result, updated, installed, failed };
-  };
+  const result = { root, upgrades, skipped, online, warnings };
+  if (options.print !== false) printHead('检查可升级依赖', root), printWarn(warnings), printBody(result);
+  return result;
+};
 
 /**
- * 逐包升级并安装依赖:每个包单独执行 npm install <name>@<picked>,
+ * 逐包升级并安装依赖,默认打印结果;每个包单独执行 npm install <name>@<picked>,
  * 成功写入 package.json 并计入 installed,失败计入 failed 且不中断继续下一个
  * >查看定义:@see {@link install}
- * @param {{root?: string, refresh?: boolean, stdio?: string, choose?: 'p'|'s'|Function}} [options] 同 check;
- *   stdio 传给 npm;choose 同 update('p'/'s' 或回调)
+ * @param {{root?: string, refresh?: boolean, stdio?: string, choose?: 'p'|'s'|Function, print?: boolean}} [options] 同 check;
+ *   stdio 传给 npm;choose 同 update('p'/'s' 或回调);print 传 false 时不打印
  * @returns {Promise<object>} check 结果加 installed 成功项、failed 失败项、command(npm 命令名)
  */
 const install = async (options = {}) => {
@@ -132,14 +125,17 @@ const install = async (options = {}) => {
       }
       catch (err) { failed.push({ ...item, reason: err.message || String(err) }); }
     });
-  return { ...result, installed, failed, command: npm };
+  const out = { ...result, installed, failed, command: npm };
+  if (options.print !== false) printTitle('更新并安装依赖'), printInstall(out);
+  return out;
 };
 
 /**
- * 更新根目录 package.json 中可升级的依赖(不执行 npm install)
+ * 更新根目录 package.json 中可升级的依赖(不执行 npm install),默认打印结果
  * >查看定义:@see {@link update}
- * @param {{root?: string, refresh?: boolean, choose?: 'p'|'s'|Function}} [options] 同 check;
- *   choose 预发布选择:'p'/'prerelease' 取预发布(缺省),'s'/'stable' 取稳定版,也可传回调 (item)=>version
+ * @param {{root?: string, refresh?: boolean, choose?: 'p'|'s'|Function, print?: boolean}} [options] 同 check;
+ *   choose 预发布选择:'p'/'prerelease' 取预发布(缺省),'s'/'stable' 取稳定版,也可传回调 (item)=>version;
+ *   print 传 false 时不打印
  * @returns {Promise<object>} check 结果加 updated 已写入项
  */
 const update = async (options = {}) => {
@@ -148,7 +144,21 @@ const update = async (options = {}) => {
     if (!block || !(item.name in block)) return;
     block[item.name] = next, updated.push({ ...item, picked, next });
   });
-  return { ...result, updated };
+  const out = { ...result, updated };
+  if (options.print !== false) printHead('更新 package.json', out.root), printWarn(out.warnings), printBody(out, true);
+  return out;
+};
+
+// 抽出 update/install 共用骨架,差异由 handleItem 承担;依赖 check 与 writeManifest 故排其后
+const withUpgrades = async (options, handleItem) => {
+  const result = await check({ ...options, print: false }), manifest = readManifest(result.root),
+    updated = [], installed = [], failed = [];
+  for (const item of result.upgrades) {
+    const { picked, next } = await pickVersion(item, options.choose);
+    await handleItem({ item, picked, next, manifest, result, updated, installed, failed });
+  }
+  if (updated.length || installed.length) writeManifest(result.root, manifest);
+  return { result, updated, installed, failed };
 };
 
 export { check, install, update };
