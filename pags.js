@@ -136,8 +136,8 @@ const check = async (options = {}) => {
  * @returns {Promise<object>} check 结果加 installed 成功项、failed 失败项、command(npm 命令名)
  */
 const install = async (options = {}) => {
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm', { result, installed, failed, pending } =
-    await withUpgrades(options, async ({ item, picked, next, manifest, result, installed, failed }) => {
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm', { result, updated, installed, failed, pending } =
+    await withUpgrades(options, async ({ item, picked, next, manifest, result, updated, installed, failed }) => {
       try {
         // 优先直调 npm-cli.js(shell:false)规避 DEP0190 与 win32 的 npm.cmd EINVAL;找不到再回退 npm.cmd
         const npmCli = (process.env.npm_execpath && fs.existsSync(process.env.npm_execpath)) ? process.env.npm_execpath
@@ -152,12 +152,12 @@ const install = async (options = {}) => {
 
         const block = manifest[item.field];
         if (block && item.name in block && block[item.name] !== next) block[item.name] = next;
-        installed.push({ ...item, picked, next });
+        installed.push({ ...item, picked, next }), updated.push({ ...item, picked, next });
       }
       catch (err) { failed.push({ ...item, reason: err.message || String(err) }); }
     });
-  const out = { ...result, installed, failed, pending, command: npm };
-  if (options.print !== false) printTitle('更新并安装依赖'), printInstall(out);
+  const out = { ...result, updated, installed, failed, pending, command: npm };
+  if (options.print !== false) printTitle('安装依赖'), printInstall(out);
   return out;
 };
 

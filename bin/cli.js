@@ -11,6 +11,10 @@ const raw = process.argv.slice(2), stable = raw.some(arg => arg === '--stable' |
   // 命令行靠询问决定预发布/稳定版;函数方式用 choose 传参,不交互
   askChoose = item => new Promise(resolve => {
     const open = () => { rl || (rl = readline.createInterface({ input: process.stdin, output: process.stdout })); };
+    if (item.mode === 'stable') {
+      console.log(`    ${chalk.cyanBright(item.name)}${chalk.gray(` 当前 `)}${chalk.blue(item.current)}${chalk.gray(` → `)}${chalk.green(item.latest)}${chalk.greenBright(` (稳定版)`)}`);
+      return resolve(item.latest);
+    }
     if (item.mode === 'choose') {
       console.log(`    ${chalk.cyan(item.name)}${chalk.gray(` 当前 ${item.current},预发布已无更新`)}`);
       console.log(`      ${chalk.green('1)')} 保持不变   ${chalk.gray('(默认)')}`);
@@ -57,7 +61,7 @@ const raw = process.argv.slice(2), stable = raw.some(arg => arg === '--stable' |
   },
   runInstall = async refresh => {
     try {
-      printTitle('更新并安装依赖');
+      printTitle('安装依赖');
       const result = await install({ refresh, print: false, choose: stable ? 's' : askChoose });
       printInstall(result);
     } catch (err) { fail(err); } finally { closeAsk(); }

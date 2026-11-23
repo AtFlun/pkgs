@@ -21,12 +21,20 @@ const dispWidth = text => {
       + tag
       + chalk.gray(`  ${item.field}`);
   },
-  printChoices = result => {
+  printChoices = (result, written = false) => {
     const done = new Set((result.updated || []).map(item => item.name));
     const base = result.updated ? (result.pending || []) : (result.choices || []);
     const list = base.filter(item => !done.has(item.name));
     if (!list.length) return;
     const width = Math.max(...list.map(item => dispWidth(item.name)));
+    if (written) {
+      console.log(`    ${chalk.cyan('保持 ')}${chalk.yellowBright(String(list.length))}${chalk.cyan(' 项')}`);
+      for (const item of list) console.log(
+        `      ${chalk.cyanBright(padWidth(item.name, width))}  `
+        + chalk.blue(item.current) + chalk.gray(' 保持不变')
+        + chalk.gray(`  ${item.field}`));
+      return;
+    }
     console.log(`    ${chalk.cyan('可选 ')}${chalk.yellowBright(String(list.length))}${chalk.cyan(' 项(预发布无更新,稳定版更高)')}`);
     for (const item of list) console.log(
       `      ${chalk.cyanBright(padWidth(item.name, width))}  `
@@ -39,10 +47,10 @@ const dispWidth = text => {
   printWarn = texts => {
     for (const text of texts) console.log(`    ${chalk.yellow('⚠ ')}${chalk.gray(text)}`);
   },
-  printBody = (result, written = false) => {
-    const label = written ? '已更新' : '可升级', paint = written ? chalk.green : chalk.cyan,
+  printBody = (result, written = false, verb) => {
+    const label = verb || (written ? '已更新' : '可升级'), paint = written ? chalk.green : chalk.cyan,
       updMap = written ? new Map((result.updated || []).map(u => [u.name, u])) : null,
-      view = written ? result.upgrades.map(item => updMap.get(item.name) || item) : result.upgrades;
+      view = written ? (result.updated || result.upgrades) : result.upgrades;
     if (view.length) {
       const widths = {
         name: Math.max(...view.map(item => dispWidth(item.name))),
@@ -63,19 +71,15 @@ const dispWidth = text => {
       console.log(`    ${chalk.yellow('跳过 ')}${chalk.yellowBright(String(result.skipped.length))}` + chalk.yellow(' 项'));
       for (const item of result.skipped) console.log(formatSkip(item, widths));
     }
-    printChoices(result), console.log('');
+    printChoices(result, written), console.log('');
   },
   printInstall = result => {
     printRoot(result.root), printWarn(result.warnings);
-    if (!result.upgrades.length) console.log(`    ${chalk.cyan('安装 ')}${chalk.gray('跳过,无依赖需要更新')}`);
-    else {
-      for (const item of result.installed) console.log(`    ${chalk.green('✓ ')}${chalk.cyanBright(item.name)}  `
-        + chalk.blue(item.current + ' → ') + chalk.green(item.picked || item.latest) + chalk.gray(`  ${item.field}`));
-      for (const item of result.failed) console.log(`    ${chalk.red('✗ ')}${chalk.yellowBright(item.name)}  `
-        + chalk.gray(item.reason));
-      console.log(''), console.log(`    ${chalk.cyan('安装 ')}${chalk.green('成功 ' + result.installed.length)}`
-        + chalk.red(' 失败 ' + result.failed.length));
-    }
+    /* 结果阶段不再重复清单,只报汇总与失败项;清单已在提示阶段打印 */
+    for (const item of result.failed) console.log(`    ${chalk.red('✗ ')}${chalk.yellowBright(item.name)}  `
+      + chalk.gray(item.reason));
+    if (result.installed.length || result.failed.length)
+      console.log(`    ${chalk.cyan('安装结果 ')}${chalk.green('成功 ' + result.installed.length)}`
+        + chalk.red(' 失败 ' + result.failed.length)), console.log('');
   };
-
 export { printBody, printChoices, printHead, printInstall, printRoot, printTitle, printWarn };
