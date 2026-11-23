@@ -29,11 +29,11 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
   },
   // 按 choose 选定版本,异步是因为 choose 可能为回调:'p'/'prerelease' 取预发布(缺省),'s'/'stable' 取稳定版
   pickVersion = async (item, choose) => {
-    const picked = item.prerelease
-      ? (choose === 's' || choose === 'stable' ? item.latest
-        : typeof choose === 'function' ? await choose(item) : item.prerelease)
-      : item.latest,
-      next = item.prerelease && picked === item.prerelease ? item.prefix + item.prerelease : item.next;
+    const picked = item.prerelease ? (choose === 's' || choose === 'stable' ? item.latest
+      : typeof choose === 'function' ? await choose(item) : item.prerelease) : item.latest,
+      // next 跟随 picked:预发布取预发布,稳定取 item.next,回调自定义值则 prefix+picked,保证与 install 装的一致
+      next = picked === item.prerelease ? item.prefix + item.prerelease : picked === item.latest ? item.next
+        : item.prefix + picked;
     return { picked, next };
   },
   readManifest = root => {
