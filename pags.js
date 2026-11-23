@@ -27,6 +27,15 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
     if (!matched) return { skip: /[xX*]/.test(text) ? '通配范围' : '无法识别的范围' };
     return { prefix: matched.groups.prefix || '', version: matched.groups.version };
   },
+  // 按 choose 选定版本,异步是因为 choose 可能为回调:'p'/'prerelease' 取预发布(缺省),'s'/'stable' 取稳定版
+  pickVersion = async (item, choose) => {
+    const picked = item.prerelease
+      ? (choose === 's' || choose === 'stable' ? item.latest
+        : typeof choose === 'function' ? await choose(item) : item.prerelease)
+      : item.latest,
+      next = item.prerelease && picked === item.prerelease ? item.prefix + item.prerelease : item.next;
+    return { picked, next };
+  },
   readManifest = root => {
     const file = path.join(root, 'package.json');
     try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
@@ -43,25 +52,6 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
       eol = raw.includes('\r\n') ? '\r\n' : '\n', tail = /\r?\n$/.test(raw) ? eol : '',
       text = JSON.stringify(manifest, null, indent).replace(/\n/g, eol) + tail;
     fs.writeFileSync(file, text);
-  },
-  // 按 choose 选定版本:'p'/'prerelease' 取预发布(缺省),'s'/'stable' 取稳定版,也可传回调;返回 { picked, next }
-  pickVersion = async (item, choose) => {
-    const picked = item.prerelease
-      ? (choose === 's' || choose === 'stable' ? item.latest
-        : typeof choose === 'function' ? await choose(item) : item.prerelease)
-      : item.latest,
-      next = item.prerelease && picked === item.prerelease ? item.prefix + item.prerelease : item.next;
-    return { picked, next };
-  },
-  // 公共流程:check → 读 manifest → 逐项交给 handleItem → 按需写回;handleItem 可同步或异步
-  withUpgrades = async (options, handleItem) => {
-    const result = await check(options), manifest = readManifest(result.root), updated = [], installed = [], failed = [];
-    for (const item of result.upgrades) {
-      const { picked, next } = await pickVersion(item, options.choose);
-      await handleItem({ item, picked, next, manifest, result, updated, installed, failed });
-    }
-    if (updated.length || installed.length) writeManifest(result.root, manifest);
-    return { result, updated, installed, failed };
   };
 
 /**
@@ -100,23 +90,18 @@ const check = async (options = {}) => {
     upgrades.push({ ...item, latest: target, prerelease: preTarget, next: item.prefix + target });
   }
   return { root, upgrades, skipped, online, warnings };
-};
-
-/**
- * 更新根目录 package.json 中可升级的依赖(不执行 npm install)
- * >查看定义:@see {@link update}
- * @param {{root?: string, refresh?: boolean, choose?: 'p'|'s'|Function}} [options] 同 check;
- *   choose 预发布选择:'p'/'prerelease' 取预发布(缺省),'s'/'stable' 取稳定版,也可传回调 (item)=>version
- * @returns {Promise<object>} check 结果加 updated 已写入项
- */
-const update = async (options = {}) => {
-  const { result, updated } = await withUpgrades(options, ({ item, picked, next, manifest, updated }) => {
-    const block = manifest[item.field];
-    if (!block || !(item.name in block)) return;
-    block[item.name] = next, updated.push({ ...item, picked, next });
-  });
-  return { ...result, updated };
-};
+},
+  // 抽出 update/install 共用骨架,差异由 handleItem 承担;依赖 writeManifest 故排其后
+  withUpgrades = async (options, handleItem) => {
+    const result = await check(options), manifest = readManifest(result.root),
+      updated = [], installed = [], failed = [];
+    for (const item of result.upgrades) {
+      const { picked, next } = await pickVersion(item, options.choose);
+      await handleItem({ item, picked, next, manifest, result, updated, installed, failed });
+    }
+    if (updated.length || installed.length) writeManifest(result.root, manifest);
+    return { result, updated, installed, failed };
+  };
 
 /**
  * 逐包升级并安装依赖:每个包单独执行 npm install <name>@<picked>,
@@ -127,11 +112,10 @@ const update = async (options = {}) => {
  * @returns {Promise<object>} check 结果加 installed 成功项、failed 失败项、command(npm 命令名)
  */
 const install = async (options = {}) => {
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm',
-    { result, installed, failed } = await withUpgrades(options, async ({ item, picked, next, manifest, result, installed,
-      failed }) => {
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm', { result, installed, failed } = await withUpgrades(options,
+    async ({ item, picked, next, manifest, result, installed, failed }) => {
       try {
-        // 优先直调 npm-cli.js(shell:false,规避 DEP0190 与 win32 的 npm.cmd EINVAL);找不到再回退 npm.cmd
+        // 优先直调 npm-cli.js(shell:false)规避 DEP0190 与 win32 的 npm.cmd EINVAL;找不到再回退 npm.cmd
         const npmCli = (process.env.npm_execpath && fs.existsSync(process.env.npm_execpath)) ? process.env.npm_execpath
           : (() => {
             const guess = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
@@ -149,6 +133,22 @@ const install = async (options = {}) => {
       catch (err) { failed.push({ ...item, reason: err.message || String(err) }); }
     });
   return { ...result, installed, failed, command: npm };
+};
+
+/**
+ * 更新根目录 package.json 中可升级的依赖(不执行 npm install)
+ * >查看定义:@see {@link update}
+ * @param {{root?: string, refresh?: boolean, choose?: 'p'|'s'|Function}} [options] 同 check;
+ *   choose 预发布选择:'p'/'prerelease' 取预发布(缺省),'s'/'stable' 取稳定版,也可传回调 (item)=>version
+ * @returns {Promise<object>} check 结果加 updated 已写入项
+ */
+const update = async (options = {}) => {
+  const { result, updated } = await withUpgrades(options, ({ item, picked, next, manifest, updated }) => {
+    const block = manifest[item.field];
+    if (!block || !(item.name in block)) return;
+    block[item.name] = next, updated.push({ ...item, picked, next });
+  });
+  return { ...result, updated };
 };
 
 export { check, install, update };
