@@ -94,17 +94,15 @@ const check = async (options = {}) => {
     if (item.pre) {
       if (preNewer)
         upgrades.push({
-          ...item, latest: stable, prerelease: preTarget, target: preTarget, mode: 'pre',
-          next: item.prefix + preTarget
+          ...item, latest: stable, prerelease: preTarget, target: preTarget, mode: 'pre', next: item.prefix + preTarget
         });
       else if (stableNewer) choices.push({
-        ...item, latest: stable, prerelease: preTarget, target: item.current,
-        mode: 'choose', next: item.prefix + item.current
+        ...item, latest: stable, prerelease: preTarget, target: item.current, mode: 'choose',
+        next: item.prefix + item.current
       });
     }
     else if (stableNewer) upgrades.push({
-      ...item, latest: stable, prerelease: null, target: stable, mode: 'stable',
-      next: item.prefix + stable
+      ...item, latest: stable, prerelease: null, target: stable, mode: 'stable', next: item.prefix + stable
     });
   }
   const result = { root, upgrades, choices, skipped, online, warnings };
@@ -156,7 +154,7 @@ const install = async (options = {}) => {
       }
       catch (err) { failed.push({ ...item, reason: err.message || String(err) }); }
     });
-  const out = { ...result, updated, installed, failed, pending, command: npm };
+  const out = { ...result, updated, installed, failed, pending, command: npm, interactive: options.interactive === true };
   if (options.print !== false) printTitle('安装依赖'), printInstall(out);
   return out;
 };
@@ -175,7 +173,7 @@ const update = async (options = {}) => {
     if (!block || !(item.name in block)) return;
     block[item.name] = next, updated.push({ ...item, picked, next });
   });
-  const out = { ...result, updated, pending };
+  const out = { ...result, updated, pending, interactive: options.interactive === true };
   if (options.print !== false) printTitle('更新依赖'), printWarn(out.warnings), printBody(out, true);
   return out;
 };

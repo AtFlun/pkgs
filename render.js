@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { compareVer } from './net.js';
 
 const dispWidth = text => {
   let width = 0;
@@ -64,7 +65,7 @@ const dispWidth = text => {
     }
     if (written) printRoot(result.root);
     if (written) printGroups(result.updated, result.failed, '更新');
-    printChoices(result, written), console.log('');
+    printChoices(result, written), printStableHint(result), console.log('');
   },
   printGroups = (okList, failList, verb) => {
     const ok = okList || [], fail = failList || [];
@@ -86,11 +87,29 @@ const dispWidth = text => {
     if (label && !written) console.log(`    ${paint(label + ' ')}${chalk.greenBright(String(view.length))}` + paint(' 项'));
     for (const item of view) console.log(formatUpgrade(item, widths, written));
   },
+
+  isPreVer = v => /-[0-9A-Za-z.-]+$/.test(String(v).replace(/[\^~]|>=|<=|>|<|=/g, '')),
+  printStableHint = result => {
+    if (result.interactive) return;
+    const src = (result.updated && result.updated.length) ? result.updated
+      : (result.installed && result.installed.length) ? result.installed : (result.upgrades || []);
+    const list = (src || []).filter(item => {
+      const fin = item.picked || item.target || item.latest;
+      return fin && isPreVer(fin) && item.latest && !isPreVer(item.latest) && compareVer(item.latest, fin) > 0;
+    });
+    if (!list.length) return;
+    const width = Math.max(...list.map(item => dispWidth(item.name)));
+    const names = list.map(item => chalk.cyanBright(item.name)).join(chalk.gray('、'));
+    const vers = list.map(item => chalk.green(item.latest)).join(chalk.gray('、'));
+    console.log(`    ${chalk.yellow('提示 ')}${names}${chalk.gray(' 有更高稳定版 → ')}${vers}`);
+    console.log(`    ${chalk.gray('如需升级最新稳定版请传参 ')}${chalk.cyan('{choose:s}')}${chalk.gray(' 后重新执行')}`);
+  },
   printInstall = result => {
     printWarn(result.warnings);
     if (result.installed.length) printVersionTable(result.installed, true);
     printRoot(result.root);
     printGroups(result.installed, result.failed, '安装');
+    printStableHint(result);
     console.log('');
   };
 export { printBody, printChoices, printHead, printInstall, printRoot, printTitle, printWarn };

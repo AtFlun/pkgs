@@ -57,13 +57,13 @@ const raw = process.argv.slice(2), stable = raw.some(arg => arg === '--stable' |
   runInstall = async refresh => {
     try {
       printTitle('安装依赖');
-      const result = await install({ refresh, print: false, choose: stable ? 's' : askChoose });
+      const result = await install({ refresh, print: false, choose: stable ? 's' : askChoose, interactive: true });
       printInstall(result);
     } catch (err) { fail(err); } finally { closeAsk(); }
   },
   runUpdate = async refresh => {
     try {
-      const result = await update({ refresh, print: false, choose: stable ? 's' : askChoose });
+      const result = await update({ refresh, print: false, choose: stable ? 's' : askChoose, interactive: true });
       printTitle('更新依赖'), printWarn(result.warnings), printBody(result, true);
     } catch (err) { fail(err); } finally { closeAsk(); }
   };
