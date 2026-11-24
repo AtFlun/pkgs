@@ -33,6 +33,7 @@ const CACHE_FILE = path.join(os.homedir(), '.pags-cache.json'), CACHE_TTL = 3600
 const compareVer = (a, b) => {
   const pa = a.split('+')[0].split('-'), pb = b.split('+')[0].split('-'),
     na = pa[0].split('.').map(n => Number(n) || 0), nb = pb[0].split('.').map(n => Number(n) || 0);
+
   for (let i = 0; i < 3; i++) if ((na[i] || 0) !== (nb[i] || 0)) return (na[i] || 0) - (nb[i] || 0);
   if (!pa[1] && !pb[1]) return 0;
   if (!pa[1]) return 1;
@@ -45,6 +46,7 @@ const compareVer = (a, b) => {
     if (ny) return 1;
     return x < y ? -1 : 1;
   }, sa = pa[1].split('.'), sb = pb[1].split('.');
+
   for (let i = 0; i < Math.max(sa.length, sb.length); i++) {
     const c = cmpIdent(sa[i] || '', sb[i] || '');
     if (c !== 0) return c;

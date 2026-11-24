@@ -153,8 +153,8 @@ const install = async (options = {}) => {
         installed.push({ ...item, picked, next }), updated.push({ ...item, picked, next });
       }
       catch (err) { failed.push({ ...item, reason: err.message || String(err) }); }
-    });
-  const out = { ...result, updated, installed, failed, pending, command: npm, interactive: options.interactive === true };
+    }), out = { ...result, updated, installed, failed, pending, command: npm, interactive: options.interactive === true };
+
   if (options.print !== false) printTitle('安装依赖'), printInstall(out);
   return out;
 };
@@ -172,8 +172,8 @@ const update = async (options = {}) => {
     const block = manifest[item.field];
     if (!block || !(item.name in block)) return;
     block[item.name] = next, updated.push({ ...item, picked, next });
-  });
-  const out = { ...result, updated, pending, interactive: options.interactive === true };
+  }), out = { ...result, updated, pending, interactive: options.interactive === true };
+
   if (options.print !== false) printTitle('更新依赖'), printWarn(out.warnings), printBody(out, true);
   return out;
 };
