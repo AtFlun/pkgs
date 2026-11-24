@@ -176,7 +176,7 @@ const update = async (options = {}) => {
     block[item.name] = next, updated.push({ ...item, picked, next });
   });
   const out = { ...result, updated, pending };
-  if (options.print !== false) printHead('更新 package.json', out.root), printWarn(out.warnings), printBody(out, true);
+  if (options.print !== false) printTitle('更新依赖'), printWarn(out.warnings), printBody(out, true);
   return out;
 };
 

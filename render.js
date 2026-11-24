@@ -51,16 +51,7 @@ const dispWidth = text => {
     const label = verb || (written ? '已更新' : '可升级'), paint = written ? chalk.green : chalk.cyan,
       updMap = written ? new Map((result.updated || []).map(u => [u.name, u])) : null,
       view = written ? (result.updated || result.upgrades) : result.upgrades;
-    if (view.length) {
-      const widths = {
-        name: Math.max(...view.map(item => dispWidth(item.name))),
-        current: Math.max(...view.map(item => dispWidth(item.current))),
-        latest: Math.max(...view.map(item => dispWidth(item.target || (written ? (item.picked || item.latest)
-          : item.latest))))
-      };
-      console.log(`    ${paint(label + ' ')}${chalk.greenBright(String(view.length))}` + paint(' 项'));
-      for (const item of view) console.log(formatUpgrade(item, widths, written));
-    }
+    if (view.length) printVersionTable(view, written, label);
     else if (!(result.choices || []).length && !(result.pending || []).length)
       console.log(`    ${chalk.cyan('状态 ')}${chalk.green(written ? '全部依赖已是最新' : '没有可升级的依赖')}`);
     if (result.skipped.length) {
@@ -71,15 +62,35 @@ const dispWidth = text => {
       console.log(`    ${chalk.yellow('跳过 ')}${chalk.yellowBright(String(result.skipped.length))}` + chalk.yellow(' 项'));
       for (const item of result.skipped) console.log(formatSkip(item, widths));
     }
+    if (written) printRoot(result.root);
+    if (written) printGroups(result.updated, result.failed, '更新');
     printChoices(result, written), console.log('');
   },
+  printGroups = (okList, failList, verb) => {
+    const ok = okList || [], fail = failList || [];
+    if (!ok.length && !fail.length) return;
+    console.log(`    ${chalk.cyan(verb + '结果:')}`);
+    if (ok.length)
+      console.log(`      ${chalk.green('✓ 成功')}  ${chalk.cyanBright(ok.map(i => i.name).join('、'))}`);
+    if (fail.length)
+      console.log(`      ${chalk.red('✗ 失败')}  ${chalk.yellowBright(fail.map(i => i.name).join('、'))}`);
+  },
+  printVersionTable = (view, written, label) => {
+    const paint = written ? chalk.green : chalk.cyan,
+      widths = {
+        name: Math.max(...view.map(item => dispWidth(item.name))),
+        current: Math.max(...view.map(item => dispWidth(item.current))),
+        latest: Math.max(...view.map(item => dispWidth(item.target || (written ? (item.picked || item.latest)
+          : item.latest))))
+      };
+    if (label && !written) console.log(`    ${paint(label + ' ')}${chalk.greenBright(String(view.length))}` + paint(' 项'));
+    for (const item of view) console.log(formatUpgrade(item, widths, written));
+  },
   printInstall = result => {
-    printRoot(result.root), printWarn(result.warnings);
-    /* 结果阶段不再重复清单,只报汇总与失败项;清单已在提示阶段打印 */
-    for (const item of result.failed) console.log(`    ${chalk.red('✗ ')}${chalk.yellowBright(item.name)}  `
-      + chalk.gray(item.reason));
-    if (result.installed.length || result.failed.length)
-      console.log(`    ${chalk.cyan('安装结果 ')}${chalk.green('成功 ' + result.installed.length)}`
-        + chalk.red(' 失败 ' + result.failed.length)), console.log('');
+    printWarn(result.warnings);
+    if (result.installed.length) printVersionTable(result.installed, true);
+    printRoot(result.root);
+    printGroups(result.installed, result.failed, '安装');
+    console.log('');
   };
 export { printBody, printChoices, printHead, printInstall, printRoot, printTitle, printWarn };
