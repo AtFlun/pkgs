@@ -49,8 +49,7 @@ const dispWidth = text => {
     for (const text of texts) console.log(`    ${chalk.yellow('⚠ ')}${chalk.gray(text)}`);
   },
   printBody = (result, written = false, verb) => {
-    const label = verb || (written ? '已更新' : '可升级'), paint = written ? chalk.green : chalk.cyan,
-      updMap = written ? new Map((result.updated || []).map(u => [u.name, u])) : null,
+    const label = verb || (written ? '已更新' : '可升级'),
       view = written ? (result.updated || result.upgrades) : result.upgrades;
     if (view.length) printVersionTable(view, written, label);
     else if (!(result.choices || []).length && !(result.pending || []).length)
@@ -98,7 +97,6 @@ const dispWidth = text => {
       return fin && isPreVer(fin) && item.latest && !isPreVer(item.latest) && compareVer(item.latest, fin) > 0;
     });
     if (!list.length) return;
-    const width = Math.max(...list.map(item => dispWidth(item.name)));
     const names = list.map(item => chalk.cyanBright(item.name)).join(chalk.gray('、'));
     const vers = list.map(item => chalk.green(item.latest)).join(chalk.gray('、'));
     console.log(`    ${chalk.yellow('提示 ')}${names}${chalk.gray(' 有更高稳定版 → ')}${vers}`);
