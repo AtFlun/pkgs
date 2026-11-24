@@ -12,7 +12,9 @@ const raw = process.argv.slice(2), stable = raw.some(arg => arg === '--stable' |
   askChoose = item => new Promise(resolve => {
     const open = () => { rl || (rl = readline.createInterface({ input: process.stdin, output: process.stdout })); };
     if (item.mode === 'stable') {
-      console.log(`    ${chalk.cyanBright(String(item.name).padEnd(12))}${chalk.blue(String(item.current).padEnd(8))}${chalk.gray(`→ `)}${chalk.green(String(item.latest).padEnd(9))}${chalk.greenBright(`(稳定版)`)}`);
+      const nm = chalk.cyanBright(String(item.name).padEnd(12)), cur = chalk.blue(String(item.current).padEnd(8)),
+        lat = chalk.green(String(item.latest).padEnd(9));
+      console.log(`    ${nm}${cur}${chalk.gray('→ ')}${lat}${chalk.greenBright('(稳定版)')}`);
       return resolve(item.latest);
     }
     if (item.mode === 'choose') {
@@ -24,7 +26,14 @@ const raw = process.argv.slice(2), stable = raw.some(arg => arg === '--stable' |
       return rl.question(chalk.gray('    请输入 1/2,回车默认 1: '), ans => resolve(ans.trim() === '2' ? item.latest
         : item.current));
     }
-    console.log(`    ${chalk.cyanBright(item.name)}  ${chalk.blue(item.current)} → ${chalk.magenta(item.target)}${chalk.magenta(' (预发布版)')}  ${chalk.gray('或')}  ${chalk.green(item.latest)}${chalk.greenBright(' (稳定版)')}`);     console.log(chalk.gray('    请输入 1/2,输入2为稳定版,否则回车或1或任意键→预发布'));     if (!process.stdin.isTTY) return resolve(item.target);     open();     return rl.question(chalk.gray('    > '), ans => resolve(ans.trim() === '2' ? item.latest : item.target));
+    const head = `${chalk.cyanBright(item.name)}  ${chalk.blue(item.current)} → `,
+      pre = `${chalk.magenta(item.target)}${chalk.magenta(' (预发布版)')}`,
+      or = `${chalk.gray('或')}  ${chalk.green(item.latest)}${chalk.greenBright(' (稳定版)')}`;
+    console.log(`    ${head}${pre}  ${or}`);
+    console.log(chalk.gray('    请输入 1/2,输入2为稳定版,否则回车或1或任意键→预发布'));
+    if (!process.stdin.isTTY) return resolve(item.target);
+    open();
+    return rl.question(chalk.gray('    > '), ans => resolve(ans.trim() === '2' ? item.latest : item.target));
   }),
   closeAsk = () => {
     if (!rl) return;
