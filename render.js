@@ -38,7 +38,24 @@ const dispWidth = text => {
         + tag + chalk.gray(`  ${item.field}`));
     }
   },
-  printStableHint = result => {
+  printOverrides = (result, hint) => {
+    const list = (result && result.overrides) || [];
+    if (!list.length) return;
+    console.log(`    ${chalk.cyan(hint ? 'overrides 可升项(' + hint + ')' : 'overrides 可升项')}`);
+    const widths = {
+      name: Math.max(...list.map(item => dispWidth(item.path.join(' > ')))),
+      current: Math.max(...list.map(item => dispWidth(item.current))),
+      latest: Math.max(...list.map(item => dispWidth(item.latest)))
+    };
+    for (const item of list) {
+      const target = item.target || item.latest,
+        pre = /-[0-9A-Za-z.-]+$/.test(String(target).replace(/[\^~]|>=|<=|>|<|=/g, '')),
+        tag = pre ? chalk.magenta(' (预发布)') : chalk.greenBright(' (最新)');
+      console.log(`      ${chalk.cyanBright(padWidth(item.path.join(' > '), widths.name))}  `
+        + chalk.blue(`${padWidth(item.current, widths.current)} → `) + chalk.green(padWidth(target, widths.latest))
+        + tag + chalk.gray('  overrides'));
+    }
+  },  printStableHint = result => {
     if (result.interactive) return;
     const isPreVer = v => /-[0-9A-Za-z.-]+$/.test(String(v).replace(/[\^~]|>=|<=|>|<|=/g, '')),
       src = (result.updated?.length) ? result.updated : (result.installed?.length) ? result.installed
@@ -160,4 +177,4 @@ const printInstall = result => {
   printRoot(result.root), printGroups(result.installed, result.failed, '安装');
   printStableHint(result), console.log('');
 };
-export { printBody, printChoices, printHead, printInstall, printRoot, printTitle, printWarn };
+export { printBody, printChoices, printHead, printInstall, printOverrides, printRoot, printTitle, printWarn };

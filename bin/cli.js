@@ -2,17 +2,18 @@
 import chalk from 'chalk';
 import readline from 'readline';
 import { check, install, update } from '../index.js';
-import { printBody, printHead, printInstall, printTitle, printWarn } from '../render.js';
+import { printBody, printHead, printInstall, printOverrides, printTitle, printWarn } from '../render.js';
 
 let rl = null;
 const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(arg)),
   refresh = has('--refresh', '-r'), stable = has('--stable', '-s'), pre = has('--prerelease', '-p'),
-  chooseAt = (() => {
+  overrides = has('--overrides'), chooseAt = (() => {
     const i = raw.findIndex(a => a === '--choose' || a === '-c');
     return i >= 0 ? (raw[i + 1] && !raw[i + 1].startsWith('-') ? raw[i + 1] : 'p') : null;
   })(), chooseArg = chooseAt || (stable ? 's' : pre ? 'p' : null),
   rest = raw.filter((arg, i) => {
     if (['--refresh', '-r', '--stable', '-s', '--prerelease', '-p'].includes(arg)) return false;
+    if (arg === '--overrides') return false;
     if (arg === '--choose' || arg === '-c') return false;
     if (i > 0 && (raw[i - 1] === '--choose' || raw[i - 1] === '-c')) return false;
     return true;
@@ -64,27 +65,32 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
       grp('选项'),
       cmdLine('-r', '重新查询 registry,忽略 1 小时缓存;完整写法 --refresh'),
       cmdLine('--choose', '预发布/稳定版: p|prerelease 预发布(缺省), s|stable 稳定版(简写 -c);仅 update/install 有效'),
-      cmdLine('-s', '等价于 --choose s(稳定版);对称地 -p/--prerelease 等价于 --choose p'), '',
+      cmdLine('-s', '等价于 --choose s(稳定版);对称地 -p/--prerelease 等价于 --choose p'),
+      cmdLine('--overrides', '连同 overrides 可升项一起更新/安装;仅 update/install 有效'), '',
       `  ${chalk.gray('无参数、help、-h、--help 输出本帮助;')}`
     ].join('\n'));
   },
   runCheck = async refresh => {
     try {
-      const result = await check({ refresh, print: false });
-      printHead('检查可升级依赖', result.root), printWarn(result.warnings), printBody(result);
+      const result = await check({ refresh, overrides, print: false });
+      printHead('检查可升级依赖', result.root), printWarn(result.warnings), printBody(result), printOverrides(result);
     } catch (err) { fail(err); }
   },
   runInstall = async refresh => {
     try {
       printTitle('安装依赖');
-      const result = await install({ refresh, print: false, choose: chooseArg || askChoose, interactive: true });
+      const result = await install({
+        refresh, overrides, print: false,
+        choose: chooseArg || askChoose, interactive: true
+      });
       printInstall(result);
     } catch (err) { fail(err); } finally { closeAsk(); }
   },
   runUpdate = async refresh => {
     try {
-      const result = await update({ refresh, print: false, choose: chooseArg || askChoose, interactive: true });
-      printTitle('更新依赖'), printWarn(result.warnings), printBody(result, true);
+      const result = await update({ refresh, overrides, print: false, choose: chooseArg || askChoose, interactive: true });
+      printTitle('更新依赖');
+      printWarn(result.warnings), printBody(result, true), printOverrides(result);
     } catch (err) { fail(err); } finally { closeAsk(); }
   };
 

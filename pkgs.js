@@ -94,7 +94,7 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
  */
 const check = async (options = {}) => {
   const root = resolveRoot(options.root), manifest = readManifest(root), upgrades = [], choices = [], skipped = [],
-    items = [], names = new Set(), warnings = [];
+    items = [], ovItems = [], names = new Set(), warnings = [];
 
   for (const field of FIELDS) {
     const block = manifest[field];
@@ -107,7 +107,10 @@ const check = async (options = {}) => {
       });
     }
   }
-  for (const key of ['overrides', 'resolutions']) if (manifest[key]) warnings.push(`根目录 ${key} 未自动处理,请手动核对`);
+  if (manifest.resolutions) warnings.push('根目录 resolutions 未自动处理,请手动核对');
+  const { out: ovOut, skipped: ovSkipped } = manifest.overrides ? collectOverrides(manifest) : { out: [], skipped: [] };
+  skipped.push(...ovSkipped);
+  for (const item of ovOut) names.add(item.name), ovItems.push(item);
 
   const { data: latest, online } = await resolveLatest([...names], Boolean(options.refresh)),
     { data: pre } = await resolvePrerelease(items.filter(i => i.pre && latest[i.name]).map(i => i.name));
@@ -134,7 +137,16 @@ const check = async (options = {}) => {
       ...item, latest: stable, prerelease: null, target: stable, mode: 'stable', next: item.prefix + stable
     });
   }
-  const result = { root, upgrades, choices, skipped, online, warnings };
+  const overridesUpgrades = [];
+  for (const item of ovItems) {
+    const stable = latest[item.name];
+    if (!stable) skipped.push({ ...item, reason: online ? 'registry 无此包' : '离线,未取到版本' });
+    else if (compareVer(stable, item.current) > 0) overridesUpgrades.push({
+      ...item, latest: stable, prerelease: null, target: stable, mode: 'stable', next: item.prefix + stable
+    });
+  }
+  if (options.overrides) upgrades.push(...overridesUpgrades);
+  const result = { root, upgrades, choices, skipped, online, warnings, overrides: overridesUpgrades };
   if (options.print !== false) printHead('检查可升级依赖', root), printWarn(warnings), printBody(result);
   return result;
 },
@@ -177,8 +189,11 @@ const install = async (options = {}) => {
         else execFileSync(npm, ['install', `${item.name}@${picked}`],
           { cwd: result.root, stdio: options.stdio || 'pipe', shell: true });
 
-        const block = manifest[item.field];
-        if (block && item.name in block && block[item.name] !== next) block[item.name] = next;
+        if (item.field === 'overrides') setOverride(manifest, item.path, next);
+        else {
+          const block = manifest[item.field];
+          if (block && item.name in block && block[item.name] !== next) block[item.name] = next;
+        }
         installed.push({ ...item, picked, next }), updated.push({ ...item, picked, next });
       }
       catch (err) { failed.push({ ...item, reason: err.message || String(err) }); }
@@ -198,9 +213,13 @@ const install = async (options = {}) => {
  */
 const update = async (options = {}) => {
   const { result, updated, pending } = await withUpgrades(options, ({ item, picked, next, manifest, updated }) => {
-    const block = manifest[item.field];
-    if (!block || !(item.name in block)) return;
-    block[item.name] = next, updated.push({ ...item, picked, next });
+    if (item.field === 'overrides') setOverride(manifest, item.path, next);
+    else {
+      const block = manifest[item.field];
+      if (!block || !(item.name in block)) return;
+      block[item.name] = next;
+    }
+    updated.push({ ...item, picked, next });
   }), out = { ...result, updated, pending, interactive: options.interactive === true };
 
   if (options.print !== false) printTitle('更新依赖'), printWarn(out.warnings), printBody(out, true);
