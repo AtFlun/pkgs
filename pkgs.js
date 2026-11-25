@@ -48,6 +48,35 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
     if (!root) throw new Error('未找到 package.json,请在项目内运行或通过 root 指定目录');
     return root;
   },
+  // overrides 递归收集:只取字符串叶子,记录 path;foo$bar 引用选择器首版跳过;复用 parseRange 跳过规则
+  collectOverrides = manifest => {
+    const out = [], skipped = [], walk = (node, pth) => {
+      if (!node || typeof node !== 'object') return;
+      for (const [key, val] of Object.entries(node)) {
+        const base = { name: key, field: 'overrides', path: [...pth, key], range: val };
+        if (val && typeof val === 'object') walk(val, base.path);
+        else if (key.includes('$')) skipped.push({ ...base, reason: '引用选择器,需手动升级' });
+        else {
+          const parsed = parseRange(val);
+          if (parsed.skip) skipped.push({ ...base, reason: parsed.skip });
+          else out.push({ ...base, prefix: parsed.prefix, current: parsed.version, pre: parsed.version.includes('-') });
+        }
+      }
+    };
+    walk(manifest.overrides, []);
+    return { out, skipped };
+  },
+  // overrides 按 path 下钻到叶子赋值,保留嵌套结构与 $ 键
+  setOverride = (manifest, pth, next) => {
+    let node = manifest.overrides;
+    if (!node || typeof node !== 'object') return;
+    for (const seg of pth.slice(0, -1)) {
+      if (!node[seg] || typeof node[seg] !== 'object') return;
+      node = node[seg];
+    }
+    const leaf = pth[pth.length - 1];
+    if (node[leaf] !== undefined) node[leaf] = next;
+  },
   writeManifest = (root, manifest) => {
     const file = path.join(root, 'package.json'), raw = fs.readFileSync(file, 'utf8'),
       sample = /\n([ \t]+)\S/.exec(raw), indent = sample ? sample[1] : '  ',
