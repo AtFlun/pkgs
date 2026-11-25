@@ -1,6 +1,6 @@
 {
   "name": "@flun/pags",
-  "version": "1.0.0",
+  "version": "0.9.0",
   "description": "查询项目中可升级的依赖,写新版本到根目录 package.json,安装最新依赖;",
   "type": "module",
   "types": "index.d.ts",
