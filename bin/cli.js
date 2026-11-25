@@ -59,7 +59,7 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
       grp('命令'),
       cmdLine('c', '查询项目中可升级的依赖(全写 check)'),
       cmdLine('u', '更新 package.json 中的依赖版本,不执行安装(全写 update)'),
-      cmdLine('i', '逐包安装最新依赖,失败不中断继续下一个(全写 install)'),
+      cmdLine('i', '逐包升级并安装依赖,失败不中断继续下一个(全写 install)'),
       cmdLine('help', '输出本帮助'), '',
       grp('选项'),
       cmdLine('-r', '重新查询 registry,忽略 1 小时缓存;完整写法 --refresh'),

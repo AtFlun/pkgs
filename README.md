@@ -84,7 +84,7 @@ npx @flun/pkgs c
 | 参数           | 作用                                      |
 | -------------- | ----------------------------------------- |
 | `c`, `check`   | 查询项目中可升级的依赖                    |
-| `i`, `install` | 逐包安装最新依赖,失败不中断继续下一个     |
+| `i`, `install` | 逐包升级并安装依赖,失败不中断继续下一个     |
 | `u`, `update`  | 更新 package.json 中的依赖版本,不执行安装 |
 | `help`         | 输出本帮助                                |
 
@@ -102,23 +102,27 @@ npx @flun/pkgs c
 命令行显式指定与函数 `choose` 同形:`--choose p|prerelease`(预发布,缺省)、`--choose s|stable`(稳定版);
 并有短别名 `-s`/`--stable`、`-p`/`--prerelease`;
 ```sh
-pkgs u --choose s      # 更新时选稳定版
 pkgs i -s              # 安装时选稳定版(-s 等价 --choose s)
 pkgs i --choose p -r   # 安装时选预发布并忽略缓存
+pkgs u --choose s      # 更新时选稳定版
 ```
 
 ---
 
 ## 函数方式
 
-导入 `check`、、`install``update` 三个函数:
+导入 `check`、`install`、`update` 三个函数:
 
 ```js
 import { check, install, update } from '@flun/pkgs';
 
-const r1 = await check();     // 查询可升级依赖;
-const r2 = await install();   // 逐包安装最新依赖;
-const r3 = await update();    // 更新package.js中 包为最新依赖;
+// 三者均返回结果对象,按需接收;默认直接执行即可
+// check   → { root, upgrades, choices, skipped, online, warnings }
+// install → check 结果 + installed(成功)、failed(失败)、command(npm 命令名)
+// update  → check 结果 + updated(已写入项)
+await check();    // 查询根目录 package.json 中可升级的依赖
+await install();  // 逐包升级并安装依赖
+await update();   // 更新根目录 package.json 中可升级的依赖(不执行 npm install)
 ```
 
 ### 配置对象
@@ -141,7 +145,7 @@ const r3 = await update();    // 更新package.js中 包为最新依赖;
 // 默认:有预发布就选预发布
 await update();
 
-// 显式选预发布(等价缺省)
+// 更新根目录 package.json 中可升级的依赖(不执行 npm install)
 await install({ choose: 'p' });
 
 // 选稳定版:传 's' 即可
