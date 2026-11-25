@@ -1,1 +1,1 @@
-export * from './pags.js';
+export * from './pkgs.js';

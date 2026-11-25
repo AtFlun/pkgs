@@ -1,5 +1,5 @@
 {
-  "name": "@flun/pags",
+  "name": "@flun/pkgs",
   "version": "1.0.0",
   "description": "查询项目中可升级的依赖,写新版本到根目录 package.json,安装最新依赖;",
   "type": "module",
@@ -9,10 +9,10 @@
   },
   "main": "index.js",
   "bin": {
-    "pags": "bin/cli.js"
+    "pkgs": "bin/cli.js"
   },
   "keywords": [
-    "pags",
+    "pkgs",
     "flun",
     "dependency-upgrade",
     "upgrade",
@@ -26,7 +26,7 @@
     "index.d.ts",
     "index.js",
     "net.js",
-    "pags.js",
+    "pkgs.js",
     "render.js",
     "LICENSE"
   ],

@@ -55,7 +55,7 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
     const cmdLine = (name, desc) => `      ${chalk.cyanBright(name.padEnd(12))}${chalk.gray(desc)}`,
       grp = name => `    ${chalk.cyan(name)}`;
     console.log([
-      `  ${chalk.blueBright('用法:')} pags <命令> [选项]`, '',
+      `  ${chalk.blueBright('用法:')} pkgs <命令> [选项]`, '',
       grp('命令'),
       cmdLine('c', '查询项目中可升级的依赖(全写 check)'),
       cmdLine('u', '更新 package.json 中的依赖版本,不执行安装(全写 update)'),

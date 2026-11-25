@@ -1,10 +1,10 @@
-# @flun/pags
+# @flun/pkgs
 
 ## 简介
 
 Flun 依赖升级工具:查询项目中可升级的依赖,写新版本到根目录 package.json,安装最新依赖;
 
-提供 `check`、`install`、`update` 三个函数,以及 `pags` 命令行;库入口只导出这三个函数,联网查询与本地缓存逻辑在内部完成;
+提供 `check`、`install`、`update` 三个函数,以及 `pkgs` 命令行;库入口只导出这三个函数,联网查询与本地缓存逻辑在内部完成;
 
 ---
 
@@ -26,15 +26,15 @@ Flun 依赖升级工具:查询项目中可升级的依赖,写新版本到根目�
 随包发布的文件:
 
 ```
-@flun/pags/
+@flun/pkgs/
 ├── bin/
-│   └── cli.js       命令行入口(bin: pags)
+│   └── cli.js       命令行入口(bin: pkgs)
 ├── CHANGELOG.md     更新日志
 ├── README.md        本文件
 ├── index.d.ts       类型声明
-├── index.js         库入口,转发 pags.js 的导出
+├── index.js         库入口,转发 pkgs.js 的导出
 ├── net.js           联网查询最新版本与本地缓存
-├── pags.js          check / install / update 三个函数
+├── pkgs.js          check / install / update 三个函数
 ├── render.js         终端输出渲染与格式化
 ├── LICENSE          许可
 └── package.json     包配置
@@ -54,7 +54,7 @@ Flun 依赖升级工具:查询项目中可升级的依赖,写新版本到根目�
 ```json
 {
   "allowScripts": {
-    "@flun/pags": true
+    "@flun/pkgs": true
   }
 }
 ```
@@ -64,9 +64,9 @@ Flun 依赖升级工具:查询项目中可升级的依赖,写新版本到根目�
 ## 安装
 
 ```sh
-npm i -D @flun/pags # 项目内安装(作为开发工具)
+npm i -D @flun/pkgs # 项目内安装(作为开发工具)
 
-npm i -g @flun/pags # 全局安装(建议);之后使用 `pags help` 查看用法
+npm i -g @flun/pkgs # 全局安装(建议);之后使用 `pkgs help` 查看用法
 ```
 
 ---
@@ -76,7 +76,7 @@ npm i -g @flun/pags # 全局安装(建议);之后使用 `pags help` 查看用法
 ### 快速开始
 
 ```sh
-npx @flun/pags c
+npx @flun/pkgs c
 ```
 
 ### 子命令
@@ -97,14 +97,14 @@ npx @flun/pags c
 | `-s`, `--stable`     | 等价 `--choose s`(稳定版)                                                           |
 | `-p`, `--prerelease` | 等价 `--choose p`(预发布)                                                           |
 
-无参数、`help`、`-h`、`--help` 输出帮助;全局安装后把 `npx @flun/pags` 换成 `pags`;
+无参数、`help`、`-h`、`--help` 输出帮助;全局安装后把 `npx @flun/pkgs` 换成 `pkgs`;
 `update`/`install` 不显式指定 `--choose`/`-s`/`-p` 时进入交互选择;
 命令行显式指定与函数 `choose` 同形:`--choose p|prerelease`(预发布,缺省)、`--choose s|stable`(稳定版);
 并有短别名 `-s`/`--stable`、`-p`/`--prerelease`;
 ```sh
-pags u --choose s      # 更新时选稳定版
-pags i -s              # 安装时选稳定版(-s 等价 --choose s)
-pags i --choose p -r   # 安装时选预发布并忽略缓存
+pkgs u --choose s      # 更新时选稳定版
+pkgs i -s              # 安装时选稳定版(-s 等价 --choose s)
+pkgs i --choose p -r   # 安装时选预发布并忽略缓存
 ```
 
 ---
@@ -114,7 +114,7 @@ pags i --choose p -r   # 安装时选预发布并忽略缓存
 导入 `check`、、`install``update` 三个函数:
 
 ```js
-import { check, install, update } from '@flun/pags';
+import { check, install, update } from '@flun/pkgs';
 
 const r1 = await check();     // 查询可升级依赖;
 const r2 = await install();   // 逐包安装最新依赖;
@@ -166,7 +166,7 @@ ISC
 
 ## 贡献
 
-- 主页:[npm 包页面](https://www.npmjs.com/package/@flun/pags#readme)
+- 主页:[npm 包页面](https://www.npmjs.com/package/@flun/pkgs#readme)
 - 源码:[GitHub](https://github.com/AtFlun/pkgs)
 - 中国镜像:[gitee](https://gitee.com/AtFlun/pkgs.git)
 - 问题反馈:[Issues](https://github.com/AtFlun/pkgs/issues)
