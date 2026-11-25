@@ -5,10 +5,19 @@ import { check, install, update } from '../index.js';
 import { printBody, printHead, printInstall, printTitle, printWarn } from '../render.js';
 
 let rl = null;
-const raw = process.argv.slice(2), stable = raw.some(arg => arg === '--stable' || arg === '-s'),
-  refresh = raw.some(arg => arg === '--refresh' || arg === '-r'),
-  rest = raw.filter(arg => !['--refresh', '-r', '--stable', '-s'].includes(arg)), cmd = rest[0],
-  // 命令行靠询问决定预发布/稳定版;函数方式用 choose 传参,不交互
+const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(arg)),
+  refresh = has('--refresh', '-r'), stable = has('--stable', '-s'), pre = has('--prerelease', '-p'),
+  chooseAt = (() => {
+    const i = raw.findIndex(a => a === '--choose' || a === '-c');
+    return i >= 0 ? (raw[i + 1] && !raw[i + 1].startsWith('-') ? raw[i + 1] : 'p') : null;
+  })(), chooseArg = chooseAt || (stable ? 's' : pre ? 'p' : null),
+  rest = raw.filter((arg, i) => {
+    if (['--refresh', '-r', '--stable', '-s', '--prerelease', '-p'].includes(arg)) return false;
+    if (arg === '--choose' || arg === '-c') return false;
+    if (i > 0 && (raw[i - 1] === '--choose' || raw[i - 1] === '-c')) return false;
+    return true;
+  }), cmd = rest[0],
+  // 显式 --choose/-c 或 -s/-p 决定预发布/稳定版(与函数 choose 同形);都不传则询问交互
   askChoose = item => new Promise(resolve => {
     const open = () => { rl || (rl = readline.createInterface({ input: process.stdin, output: process.stdout })); };
     if (item.mode === 'stable') {
@@ -53,7 +62,9 @@ const raw = process.argv.slice(2), stable = raw.some(arg => arg === '--stable' |
       cmdLine('i', '逐包安装最新依赖,失败不中断继续下一个(全写 install)'),
       cmdLine('help', '输出本帮助'), '',
       grp('选项'),
-      cmdLine('-r', '重新查询 registry,忽略 1 小时缓存;完整写法 --refresh'), '',
+      cmdLine('-r', '重新查询 registry,忽略 1 小时缓存;完整写法 --refresh'),
+      cmdLine('--choose', '预发布/稳定版: p|prerelease 预发布(缺省), s|stable 稳定版(简写 -c);仅 update/install 有效'),
+      cmdLine('-s', '等价于 --choose s(稳定版);对称地 -p/--prerelease 等价于 --choose p'), '',
       `  ${chalk.gray('无参数、help、-h、--help 输出本帮助;')}`
     ].join('\n'));
   },
@@ -66,13 +77,13 @@ const raw = process.argv.slice(2), stable = raw.some(arg => arg === '--stable' |
   runInstall = async refresh => {
     try {
       printTitle('安装依赖');
-      const result = await install({ refresh, print: false, choose: stable ? 's' : askChoose, interactive: true });
+      const result = await install({ refresh, print: false, choose: chooseArg || askChoose, interactive: true });
       printInstall(result);
     } catch (err) { fail(err); } finally { closeAsk(); }
   },
   runUpdate = async refresh => {
     try {
-      const result = await update({ refresh, print: false, choose: stable ? 's' : askChoose, interactive: true });
+      const result = await update({ refresh, print: false, choose: chooseArg || askChoose, interactive: true });
       printTitle('更新依赖'), printWarn(result.warnings), printBody(result, true);
     } catch (err) { fail(err); } finally { closeAsk(); }
   };

@@ -4,19 +4,20 @@
 
 Flun 依赖升级工具:查询项目中可升级的依赖,写新版本到根目录 package.json,安装最新依赖;
 
-提供 `check`、`update`、`install` 三个函数,以及 `pags` 命令行;库入口只导出这三个函数,联网查询与本地缓存逻辑在内部完成;
+提供 `check`、`install`、`update` 三个函数,以及 `pags` 命令行;库入口只导出这三个函数,联网查询与本地缓存逻辑在内部完成;
 
 ---
 
 ## 特性
 
 - `check` 查询根目录 package.json 中可升级的依赖,返回可升级项、跳过项与联网状态;
-- `update` 把可升级版本写回根目录 package.json,不执行 npm install;
 - `install` 逐包执行 `npm install <name>@<latest>`,成功计入 installed、失败计入 failed 且不中断继续下一个;
+- `update` 把可升级版本写回根目录 package.json,不执行 npm install;
 - 版本对比忽略 build 元数据,预发布版低于对应正式版;缺省选预发布版,`choose` 回调可改选稳定版;
 - npm 版本查询缓存 1 小时,`-r` 或 `--refresh` 可重新查询最新版本;
 - 联网失败或超时时降级处理并标注离线状态,不中断使用;
-- 支持 `dependencies`、`devDependencies`、`optionalDependencies`、`peerDependencies` 四个字段,工作区与本地引用等非常规范围自动跳过;
+- 支持 `dependencies`、`devDependencies`、`optionalDependencies`、`peerDependencies` 四个字段;
+  - 工作区与本地引用等非常规范围自动跳过;
 
 ---
 
@@ -33,7 +34,8 @@ Flun 依赖升级工具:查询项目中可升级的依赖,写新版本到根目�
 ├── index.d.ts       类型声明
 ├── index.js         库入口,转发 pags.js 的导出
 ├── net.js           联网查询最新版本与本地缓存
-├── pags.js          check / update / install 三个函数
+├── pags.js          check / install / update 三个函数
+├── render.js         终端输出渲染与格式化
 ├── LICENSE          许可
 └── package.json     包配置
 ```
@@ -82,69 +84,81 @@ npx @flun/pags c
 | 参数           | 作用                                      |
 | -------------- | ----------------------------------------- |
 | `c`, `check`   | 查询项目中可升级的依赖                    |
-| `u`, `update`  | 更新 package.json 中的依赖版本,不执行安装 |
 | `i`, `install` | 逐包安装最新依赖,失败不中断继续下一个     |
+| `u`, `update`  | 更新 package.json 中的依赖版本,不执行安装 |
 | `help`         | 输出本帮助                                |
 
 ### 选项
 
-| 参数              | 作用                              |
-| ----------------- | --------------------------------- |
-| `-r`, `--refresh` | 重新查询 registry,忽略 1 小时缓存 |
+| 参数                 | 作用                                                                                |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| `-r`, `--refresh`    | 重新查询 registry,忽略 1 小时缓存                                                   |
+| `--choose`, `-c`     | 预发布/稳定版:`p`／`prerelease` 预发布(缺省),`s`／`stable` 稳定版;仅 update/install |
+| `-s`, `--stable`     | 等价 `--choose s`(稳定版)                                                           |
+| `-p`, `--prerelease` | 等价 `--choose p`(预发布)                                                           |
 
 无参数、`help`、`-h`、`--help` 输出帮助;全局安装后把 `npx @flun/pags` 换成 `pags`;
+`update`/`install` 不显式指定 `--choose`/`-s`/`-p` 时进入交互选择;
+命令行显式指定与函数 `choose` 同形:`--choose p|prerelease`(预发布,缺省)、`--choose s|stable`(稳定版);
+并有短别名 `-s`/`--stable`、`-p`/`--prerelease`;
+```sh
+pags u --choose s      # 更新时选稳定版
+pags i -s              # 安装时选稳定版(-s 等价 --choose s)
+pags i --choose p -r   # 安装时选预发布并忽略缓存
+```
 
 ---
 
 ## 函数方式
 
-导入 `check`、`update`、`install` 三个函数:
+导入 `check`、、`install``update` 三个函数:
 
 ```js
-import { check, update, install } from '@flun/pags';
+import { check, install, update } from '@flun/pags';
 
-const r1 = await check();     // 查询可升级依赖,返回 root、upgrades、skipped、online、warnings
-const r2 = await update();    // 把可升级版本写回 package.json,追加 updated 已写入项
-const r3 = await install();   // 逐包安装最新依赖,追加 installed 成功项、failed 失败项与 command
+const r1 = await check();     // 查询可升级依赖;
+const r2 = await install();   // 逐包安装最新依赖;
+const r3 = await update();    // 更新package.js中 包为最新依赖;
 ```
 
 ### 配置对象
 
-| 字段      | 用于                | 说明                                                              |
-| --------- | ------------------- | ----------------------------------------------------------------- |
-| `root`    | 三者                | 指定项目根目录;默认从当前工作目录向上查找 package.json            |
-| `refresh` | 三者                | 忽略 1 小时缓存,强制查询 registry                                 |
-| `choose`  | `update`、`install` | 预发布选择:`'p'` 取预发布(缺省),`'s'` 取稳定版;也可传回调          |
-| `stdio`   | `install`           | 透传给 npm install 的标准 IO 方式                                 |
+| 字段      | 用于                | 说明                                                      |
+| --------- | ------------------- | --------------------------------------------------------- |
+| `root`    | 三者                | 指定项目根目录;默认从当前工作目录向上查找 package.json    |
+| `refresh` | 三者                | 忽略 1 小时缓存,强制查询 registry                         |
+| `choose`  | `install`、`update` | 预发布选择:`'p'` 取预发布(缺省),`'s'` 取稳定版;也可传回调 |
+| `stdio`   | `install`           | 透传给 npm install 的标准 IO 方式                         |
 
 `check` 不写回,没有 `choose`;它的每个可升级项同时给出 `latest`(稳定最新)与 `prerelease`(最高预发布),供自行判断;
 
 ### 预发布选择(choose)
 
-当某依赖存在预发布版本时,只需给 `choose` 传一个字母决定选哪个:`'p'`(prerelease,缺省)选预发布,`'s'`(stable)选稳定版;
-不传 `choose` 时默认选预发布;某项无预发布时始终用稳定版,不看 `choose`;
+当某依赖存在预发布版本时,只需给 `choose` 传一个值决定选哪个:`'p'`/`'prerelease'`(缺省)选预发布,`'s'`/`'stable'`选稳定版;
+不传 `choose` 时默认选预发布;package.json中包无预发布字段值的始终用稳定版,不看 `choose`;
 
 ```js
 // 默认:有预发布就选预发布
 await update();
 
+// 显式选预发布(等价缺省)
+await install({ choose: 'p' });
+
 // 选稳定版:传 's' 即可
 await update({ choose: 's' });
 await install({ choose: 's' });
 
-// 显式选预发布(等价缺省)
-await install({ choose: 'p' });
-
-// 搭配其他选项
+// 搭配其它选项
 await install({ choose: 's', refresh: true, stdio: 'inherit' });
 ```
 
-高级用法:`choose` 也可传异步回调 `(item) => version`,按项自定义(入参为整条升级项,返回值决定装哪个版本);命令行用
-`请输入 1/2` 交互完成同样选择,函数方式以 `choose` 替代该交互;
+命令行显式指定、短别名与交互选择见「命令行」章节;
+高级用法:`choose` 也可传异步回调 `(item) => version`,按项自定义(入参为整条升级项,返回值决定装哪个版本);
+函数方式以 `choose` 替代命令行交互;
 
 ---
 
-## 许可证## 许可证## 许可证
+## 许可证
 
 ISC
 
@@ -154,5 +168,5 @@ ISC
 
 - 主页:[npm 包页面](https://www.npmjs.com/package/@flun/pags#readme)
 - 源码:[GitHub](https://github.com/AtFlun/pkgs)
-- 中国:[gitee](https://gitee.com/AtFlun/pkgs.git)
+- 中国镜像:[gitee](https://gitee.com/AtFlun/pkgs.git)
 - 问题反馈:[Issues](https://github.com/AtFlun/pkgs/issues)
