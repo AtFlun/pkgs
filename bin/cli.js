@@ -2,7 +2,7 @@
 import chalk from 'chalk';
 import readline from 'readline';
 import { check, install, update } from '../index.js';
-import { printBody, printHead, printInstall, printOverrides, printTitle, printWarn } from '../render.js';
+import { printGroups, printHead, printInstall, printOverrides, printRoot, printTitle, printUpdatePreview, printWarn } from '../render.js';
 
 let rl = null;
 const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(arg)),
@@ -22,7 +22,7 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
   askChoose = item => new Promise(resolve => {
     const open = () => { rl || (rl = readline.createInterface({ input: process.stdin, output: process.stdout })); };
     if (item.mode === 'stable') {
-      const nm = chalk.cyanBright(String(item.name).padEnd(12)), cur = chalk.blue(String(item.current).padEnd(8)),
+      const nm = chalk.cyanBright(String(item.name).padEnd(24)), cur = chalk.blue(String(item.current).padEnd(8)),
         lat = chalk.green(String(item.latest).padEnd(9));
       console.log(`    ${nm}${cur}${chalk.gray('→ ')}${lat}${chalk.greenBright('(稳定版)')}`);
       return resolve(item.latest);
@@ -36,7 +36,7 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
       return rl.question(chalk.gray('    请输入 1/2,回车默认 1: '), ans => resolve(ans.trim() === '2' ? item.latest
         : item.current));
     }
-    const head = `${chalk.cyanBright(item.name)}  ${chalk.blue(item.current)} → `,
+    const head = `${chalk.cyanBright(String(item.name).padEnd(24))}${chalk.blue(String(item.current).padEnd(8))}→ `,
       pre = `${chalk.magenta(item.target)}${chalk.magenta(' (预发布版)')}`,
       or = `${chalk.gray('或')}  ${chalk.green(item.latest)}${chalk.greenBright(' (稳定版)')}`;
     console.log(`    ${head}${pre}  ${or}`);
@@ -49,7 +49,19 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
     if (!rl) return;
     rl.close(), rl = null;
   },
-  fail = err => {
+  resolveOverrides = async (probe) => {
+    if (overrides) return true;
+    if (!process.stdin.isTTY) return false;
+    try {
+      probe = probe || await check({ refresh, overrides: true, print: false });
+      const n = (probe.overrides || []).length;
+      if (!n) return false;
+      rl || (rl = readline.createInterface({ input: process.stdin, output: process.stdout }));
+      return await new Promise(resolve => rl.question(
+        chalk.gray(`    是否同时更新 ${n} 项 overrides? [y/N]: `),
+        ans => resolve(/^y(es)?$/i.test(String(ans).trim()))));
+    } catch { return false; }
+  }, fail = err => {
     console.error(`    ${chalk.red('✗ ')}${chalk.gray(err?.message || String(err))}`), process.exitCode = 1;
   },
   printHelp = () => {
@@ -66,7 +78,7 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
       cmdLine('-r', '重新查询 registry,忽略 1 小时缓存;完整写法 --refresh'),
       cmdLine('--choose', '预发布/稳定版: p|prerelease 预发布(缺省), s|stable 稳定版(简写 -c);仅 update/install 有效'),
       cmdLine('-s', '等价于 --choose s(稳定版);对称地 -p/--prerelease 等价于 --choose p'),
-      cmdLine('--overrides', '连同 overrides 可升项一起更新/安装;仅 update/install 有效'), '',
+      cmdLine('--overrides', '连同 overrides 可升项一起更新/安装;仅 update/install 有效,不传则交互询问'), '',
       `  ${chalk.gray('无参数、help、-h、--help 输出本帮助;')}`
     ].join('\n'));
   },
@@ -80,17 +92,20 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
     try {
       printTitle('安装依赖');
       const result = await install({
-        refresh, overrides, print: false,
-        choose: chooseArg || askChoose, interactive: true
+        refresh, overrides: await resolveOverrides(), print: false, choose: chooseArg || askChoose, interactive: true
       });
       printInstall(result);
     } catch (err) { fail(err); } finally { closeAsk(); }
   },
   runUpdate = async refresh => {
     try {
-      const result = await update({ refresh, overrides, print: false, choose: chooseArg || askChoose, interactive: true });
-      printTitle('更新依赖');
-      printWarn(result.warnings), printBody(result, true), printOverrides(result);
+      const probe = await check({ refresh, overrides: true, print: false });
+      printWarn(probe.warnings), printUpdatePreview(probe);
+      const _ovr = await resolveOverrides(probe);
+      const result = await update({
+        refresh, overrides: _ovr, print: false, choose: (chooseArg === 's' || chooseArg === 'stable') ? (it => it.latest) : (it => it.target || it.latest)
+      });
+      printRoot(result.root), printGroups(result.updated, result.failed, '更新');
     } catch (err) { fail(err); } finally { closeAsk(); }
   };
 

@@ -40,27 +40,45 @@ const dispWidth = text => {
   printGroups = (okList, failList, verb) => {
     const ok = okList || [], fail = failList || [];
     if (!ok.length && !fail.length) return;
+    const okMain = ok.filter(i => i.field !== 'overrides'), okOvr = ok.filter(i => i.field === 'overrides'),
+      failMain = fail.filter(i => i.field !== 'overrides'), failOvr = fail.filter(i => i.field === 'overrides');
     console.log(`    ${chalk.cyan(verb + '结果:')}`);
-    if (ok.length) console.log(`      ${chalk.green('✓ 成功')}  ${chalk.cyanBright(ok.map(i => i.name).join('、'))}`);
-    if (fail.length) console.log(`      ${chalk.red('✗ 失败')}  ${chalk.yellowBright(fail.map(i => i.name).join('、'))}`);
+    if (okMain.length) console.log(`      ${chalk.green('✓ 成功')}  ${chalk.cyanBright(okMain.map(i => i.name).join('、'))}`);
+    if (okOvr.length) console.log(`      ${chalk.green('✓ 成功')}  ${chalk.cyanBright(okOvr.map(i => i.name).join('、'))}${chalk.gray('  overrides')}`);
+    if (failMain.length) console.log(`      ${chalk.red('✗ 失败')}  ${chalk.yellowBright(failMain.map(i => i.name).join('、'))}`);
+    if (failOvr.length) console.log(`      ${chalk.red('✗ 失败')}  ${chalk.yellowBright(failOvr.map(i => i.name).join('、'))}${chalk.gray('  overrides')}`);
   },
   printRoot = root => console.log(`    ${chalk.cyan('根目录 ')}${chalk.gray(root)}`),
   printOverrides = (result, hint) => {
     const list = (result && result.overrides) || [];
-    if (!list.length) return;
+    if (!list.length) { console.log(''); return; }
     console.log(`    ${chalk.cyan(hint ? 'overrides 可升项(' + hint + ')' : 'overrides 可升项')}`);
-    const widths = {
-      name: Math.max(...list.map(item => dispWidth(item.path.join(' > ')))),
-      current: Math.max(...list.map(item => dispWidth(item.current))),
-      latest: Math.max(...list.map(item => dispWidth(item.latest)))
-    };
-    for (const item of list) {
-      const target = item.target || item.latest,
-        pre = /-[0-9A-Za-z.-]+$/.test(String(target).replace(/[\^~]|>=|<=|>|<|=/g, '')),
-        tag = pre ? chalk.magenta(' (预发布)') : chalk.greenBright(' (最新)');
-      console.log(`      ${chalk.cyanBright(padWidth(item.path.join(' > '), widths.name))}  `
-        + chalk.blue(`${padWidth(item.current, widths.current)} → `) + chalk.green(padWidth(target, widths.latest))
-        + tag + chalk.gray('  overrides'));
+    const mainRows = [].concat((result && result.upgrades) || [], (result && result.updated) || [])
+      .filter(item => item && item.field !== 'overrides')
+      .map(item => ({ name: item.name, current: item.current, target: item.target || item.latest }));
+    printRows(list.map(item => ({
+      name: item.path ? item.path.join(' > ') : item.name,
+      current: item.current, target: item.target || item.latest, field: 'overrides'
+    })), { written: false, extra: { rows: mainRows } });
+    console.log('');
+  },
+  printUpdatePreview = (result) => {
+    const mainRows = ((result && result.upgrades) || []).concat((result && result.upgrades) || []).concat((result && result.updated) || [])
+      .filter(item => item && item.field !== 'overrides')
+      .filter((item, i, arr) => arr.findIndex(x => x.name === item.name) === i)
+      .map(item => ({ name: item.name, current: item.current, target: item.target || item.latest, field: item.field || 'dependencies' })),
+      ovrRows = ((result && result.overrides) || [])
+      .map(item => ({ name: item.path ? item.path.join(' > ') : item.name, current: item.current, target: item.target || item.latest, field: 'overrides' }));
+    if (!mainRows.length && !ovrRows.length) return;
+    const widths = _rowWidths(mainRows.concat(ovrRows));
+    if (mainRows.length) {
+      console.log(`    ${chalk.green('更新依赖')}`);
+      for (const r of mainRows) _printRow(r, widths, true);
+    }
+    if (ovrRows.length) {
+      console.log(`    ${chalk.cyan('overrides 可升项')}`);
+      for (const r of ovrRows) _printRow(r, widths, false);
+      console.log('');
     }
   },
   printStableHint = result => {
@@ -77,28 +95,36 @@ const dispWidth = text => {
     console.log(`    ${chalk.yellow('提示 ')}${names}${chalk.gray(' 有更高稳定版 → ')}${vers}`);
     console.log(`    ${chalk.gray('如需升级最新稳定版请传参 ')}${chalk.cyan('{choose:s}')}${chalk.gray(' 后重新执行')}`);
   },
-  printVersionTable = (view, written, label) => {
-    const paint = written ? chalk.green : chalk.cyan,
-      widths = {
-        name: Math.max(...view.map(item => dispWidth(item.name))),
-        current: Math.max(...view.map(item => dispWidth(item.current))),
-        latest: Math.max(...view.map(item => dispWidth(item.target || (written ? (item.picked || item.latest)
-          : item.latest))))
-      };
+  _rowWidths = (rows, extraRows = [], minLatest = 0) => ({
+    name: Math.max(0, ...rows.map(r => dispWidth(String(r.name))), ...extraRows.map(r => dispWidth(String(r.name)))),
+    current: Math.max(0, ...rows.map(r => dispWidth(String(r.current))), ...extraRows.map(r => dispWidth(String(r.current)))),
+    latest: Math.max(minLatest, ...rows.map(r => dispWidth(String(r.target != null ? r.target : r.latest))), ...extraRows.map(r => dispWidth(String(r.target != null ? r.target : r.latest))))
+  }),
+  _printRow = (row, widths, written) => {
+    const target = row.target != null ? row.target : row.latest,
+      pre = /-[0-9A-Za-z.-]+$/.test(String(target).replace(/[\^~]|>=|<=|>|<|=/g, '')),
+      rawTag = pre ? '预发布' : (written ? '稳定版' : '最新'), tag = (pre ? chalk.magenta : chalk.greenBright)(padWidth('(' + rawTag + ')', 8));
+    console.log(`      ${chalk.cyanBright(padWidth(String(row.name), widths.name))}  `
+      + chalk.blue(`${padWidth(String(row.current), widths.current)} → `) + chalk.green(padWidth(String(target), widths.latest + 1))
+      + tag + chalk.gray(`  ${row.field}`));
+  },
+  printRows = (rows, opts = {}) => {
+    const { written = false, extra } = opts, ex = extra || {},
+      widths = _rowWidths(rows, ex.rows || [], ex.minLatest || 0);
+    for (const row of rows) _printRow(row, widths, written);
+  },
+  printVersionTable = (view, written, label, extraLatest = 0) => {
+    const paint = written ? chalk.green : chalk.cyan;
     if (label && !written) {
-      const _ln127 = `    ${paint(label + ' ')}${chalk.greenBright(String(view.length))}`;
-      console.log(_ln127 + paint(' 项'));
+      const _ln = `    ${paint(label + ' ')}${chalk.greenBright(String(view.length))}`;
+      console.log(_ln + paint(' 项'));
     }
-    for (const item of view) {
-      const target = written ? (item.picked || item.next || item.target || item.latest) : (item.target || item.latest),
-        pre = /-[0-9A-Za-z.-]+$/.test(String(target).replace(/[\^~]|>=|<=|>|<|=/g, '')),
-        tag = pre ? chalk.magenta(' (预发布)') : chalk.greenBright(written ? ' (稳定版)' : ' (最新)');
-      console.log(`      ${chalk.cyanBright(padWidth(item.name, widths.name))}  `
-        + chalk.blue(`${padWidth(item.current, widths.current)} → `) + chalk.green(padWidth(target, widths.latest))
-        + tag + chalk.gray(`  ${item.field}`));
-    }
+    printRows(view.map(item => ({
+      name: item.name, current: item.current,
+      target: written ? (item.picked || item.next || item.target || item.latest) : (item.target || item.latest),
+      field: item.field
+    })), { written, extra: { minLatest: extraLatest || 0 } });
   };
-
 /**
  * 打印主体(版本表/跳过/分组/可选/稳定版提示)
  * >查看定义:@see {@link printBody}
@@ -107,10 +133,14 @@ const dispWidth = text => {
  * @param {string} [verb] 表头动词,缺省按 written 推导
  * @returns {void}
  */
-const printBody = (result, written = false, verb) => {
+const printBody = (result, written = false, verb, tail = true) => {
   const label = verb || (written ? '已更新' : '可升级'),
-    view = written ? (result.updated || result.upgrades) : result.upgrades;
-  if (view.length) printVersionTable(view, written, label);
+    view = ((written ? (result.updated || result.upgrades) : result.upgrades) || [])
+      .filter(item => item.field !== 'overrides');
+  if (view.length) {
+    const ovrLatest = Math.max(0, ...((result && result.overrides) || []).map(o => dispWidth(String(o.target || o.latest))));
+    printVersionTable(view, written, label, ovrLatest);
+  }
   else if (!(result.choices || []).length && !(result.pending || []).length)
     console.log(`    ${chalk.cyan('状态 ')}${chalk.green(written ? '全部依赖已是最新' : '没有可升级的依赖')}`);
   if (result.skipped.length) {
@@ -125,9 +155,9 @@ const printBody = (result, written = false, verb) => {
         + chalk.gray(`${padWidth(item.range, widths.range)} · ${item.reason}`));
     }
   }
-  if (written) printRoot(result.root);
-  if (written) printGroups(result.updated, result.failed, '更新');
-  printChoices(result, written), printStableHint(result), console.log('');
+  if (written && tail) printRoot(result.root);
+  if (written && tail) printGroups(result.updated, result.failed, '更新');
+  if (tail) printChoices(result, written), printStableHint(result);
 };
 /**
  * 打印分组标题
@@ -168,4 +198,4 @@ const printInstall = result => {
   printRoot(result.root), printGroups(result.installed, result.failed, '安装');
   printStableHint(result), console.log('');
 };
-export { printBody, printHead, printInstall, printOverrides, printTitle, printWarn };
+export { printBody, printGroups, printHead, printInstall, printOverrides, printRoot, printTitle, printUpdatePreview, printWarn };

@@ -2,7 +2,7 @@ import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { compareVer, resolveLatest, resolvePrerelease } from './net.js';
-import { printBody, printHead, printInstall, printTitle, printWarn } from './render.js';
+import { printBody, printGroups, printHead, printInstall, printOverrides, printRoot, printTitle, printUpdatePreview, printWarn } from './render.js';
 
 const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'],
   SEMVER = /^(?<prefix>\^|~|>=|<=|>|<|=)?(?<version>\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/,
@@ -147,7 +147,7 @@ const check = async (options = {}) => {
   }
   if (options.overrides) upgrades.push(...overridesUpgrades);
   const result = { root, upgrades, choices, skipped, online, warnings, overrides: overridesUpgrades };
-  if (options.print !== false) printHead('检查可升级依赖', root), printWarn(warnings), printBody(result);
+  if (options.print !== false) printHead('检查可升级依赖', root), printWarn(warnings), printBody(result), (result.overrides || []).length && printOverrides(result);
   return result;
 },
   // 抽出 update/install 共用骨架,差异由 handleItem 承担;依赖 check 与 writeManifest 故排其后
@@ -222,7 +222,7 @@ const update = async (options = {}) => {
     updated.push({ ...item, picked, next });
   }), out = { ...result, updated, pending, interactive: options.interactive === true };
 
-  if (options.print !== false) printTitle('更新依赖'), printWarn(out.warnings), printBody(out, true);
+  if (options.print !== false) printWarn(out.warnings), printUpdatePreview(out), printRoot(out.root), printGroups(out.updated, out.failed, '更新');
   return out;
 };
 
