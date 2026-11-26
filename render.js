@@ -37,7 +37,7 @@ const dispWidth = text => {
       + chalk.gray('最新预发布 ') + chalk.magenta((item.prerelease || item.current))
       + chalk.gray('   最新稳定版 ') + chalk.green(item.latest));
   },
-  printGroups = (okList, failList, verb) => {
+  printGroups = (okList, failList, verb, ignoredList) => {
     const ok = okList || [], fail = failList || [];
     if (!ok.length && !fail.length) return;
     const okMain = ok.filter(i => i.field !== 'overrides'), okOvr = ok.filter(i => i.field === 'overrides'),
@@ -47,6 +47,7 @@ const dispWidth = text => {
     if (okOvr.length) console.log(`      ${chalk.green('✓ 成功')}  ${chalk.cyanBright(okOvr.map(i => i.name).join('、'))}${chalk.gray('  overrides')}`);
     if (failMain.length) console.log(`      ${chalk.red('✗ 失败')}  ${chalk.yellowBright(failMain.map(i => i.name).join('、'))}`);
     if (failOvr.length) console.log(`      ${chalk.red('✗ 失败')}  ${chalk.yellowBright(failOvr.map(i => i.name).join('、'))}${chalk.gray('  overrides')}`);
+    if (ignoredList && ignoredList.length) console.log(`      ${chalk.yellow('! 忽略')}  ${chalk.cyanBright(ignoredList.map(i => i.name).join('、'))}${chalk.gray(' (未显式指定 overrides 指令参数)')}`);
   },
   printRoot = root => console.log(`    ${chalk.cyan('根目录 ')}${chalk.gray(root)}`),
   printOverrides = (result, hint) => {
@@ -62,17 +63,17 @@ const dispWidth = text => {
     })), { written: false, extra: { rows: mainRows } });
     console.log('');
   },
-  printUpdatePreview = (result) => {
+  printUpdatePreview = (result, verb) => {
     const mainRows = ((result && result.upgrades) || []).concat((result && result.upgrades) || []).concat((result && result.updated) || [])
       .filter(item => item && item.field !== 'overrides')
       .filter((item, i, arr) => arr.findIndex(x => x.name === item.name) === i)
       .map(item => ({ name: item.name, current: item.current, target: item.target || item.latest, field: item.field || 'dependencies' })),
       ovrRows = ((result && result.overrides) || [])
-      .map(item => ({ name: item.path ? item.path.join(' > ') : item.name, current: item.current, target: item.target || item.latest, field: 'overrides' }));
+        .map(item => ({ name: item.path ? item.path.join(' > ') : item.name, current: item.current, target: item.target || item.latest, field: 'overrides' }));
     if (!mainRows.length && !ovrRows.length) return;
     const widths = _rowWidths(mainRows.concat(ovrRows));
     if (mainRows.length) {
-      console.log(`    ${chalk.green('更新依赖')}`);
+      console.log(`    ${chalk.green(verb || '更新依赖')}`);
       for (const r of mainRows) _printRow(r, widths, true);
     }
     if (ovrRows.length) {
@@ -192,10 +193,12 @@ const printWarn = texts => {
  * @param {object} result 安装结果
  * @returns {void}
  */
-const printInstall = result => {
+const printInstall = (result, ignoredList) => {
   printWarn(result.warnings);
-  if (result.installed.length) printVersionTable(result.installed, true);
-  printRoot(result.root), printGroups(result.installed, result.failed, '安装');
+  printUpdatePreview(result, '安装依赖');
+  printRoot(result.root), printGroups(result.installed, result.failed, '安装', ignoredList);
   printStableHint(result), console.log('');
 };
-export { printBody, printGroups, printHead, printInstall, printOverrides, printRoot, printTitle, printUpdatePreview, printWarn };
+export {
+  printBody, printGroups, printHead, printInstall, printOverrides, printRoot, printTitle, printUpdatePreview, printWarn
+};

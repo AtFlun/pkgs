@@ -2,7 +2,9 @@ import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { compareVer, resolveLatest, resolvePrerelease } from './net.js';
-import { printBody, printGroups, printHead, printInstall, printOverrides, printRoot, printTitle, printUpdatePreview, printWarn } from './render.js';
+import {
+  printBody, printGroups, printHead, printInstall, printOverrides, printRoot, printTitle, printUpdatePreview, printWarn
+} from './render.js';
 
 const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'],
   SEMVER = /^(?<prefix>\^|~|>=|<=|>|<|=)?(?<version>\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/,
@@ -120,8 +122,7 @@ const check = async (options = {}) => {
       skipped.push({ ...item, reason: online ? 'registry 无此包' : '离线,未取到版本' });
       continue;
     }
-    const preTarget = item.pre ? pre[item.name] || null : null,
-      stableNewer = compareVer(stable, item.current) > 0,
+    const preTarget = item.pre ? pre[item.name] || null : null, stableNewer = compareVer(stable, item.current) > 0,
       preNewer = Boolean(preTarget) && compareVer(preTarget, item.current) > 0;
     if (item.pre) {
       if (preNewer)
@@ -147,13 +148,16 @@ const check = async (options = {}) => {
   }
   if (options.overrides) upgrades.push(...overridesUpgrades);
   const result = { root, upgrades, choices, skipped, online, warnings, overrides: overridesUpgrades };
-  if (options.print !== false) printHead('检查可升级依赖', root), printWarn(warnings), printBody(result), (result.overrides || []).length && printOverrides(result);
+  if (options.print !== false) {
+    printHead('检查可升级依赖', root), printWarn(warnings), printBody(result);
+    (result.overrides || []).length && printOverrides(result);
+  }
   return result;
 },
   // 抽出 update/install 共用骨架,差异由 handleItem 承担;依赖 check 与 writeManifest 故排其后
   withUpgrades = async (options, handleItem) => {
-    const result = await check({ ...options, print: false }), manifest = readManifest(result.root),
-      updated = [], installed = [], failed = [], pending = [];
+    const result = await check({ ...options, print: false }), manifest = readManifest(result.root), updated = [],
+      installed = [], failed = [], pending = [];
     for (const item of [...result.upgrades, ...result.choices]) {
       const { picked, next } = await decideNext(item, options.choose);
       if (next === item.range) {
@@ -199,7 +203,7 @@ const install = async (options = {}) => {
       catch (err) { failed.push({ ...item, reason: err.message || String(err) }); }
     }), out = { ...result, updated, installed, failed, pending, command: npm, interactive: options.interactive === true };
 
-  if (options.print !== false) printTitle('安装依赖'), printInstall(out);
+  if (options.print !== false) printTitle('安装依赖'), printInstall(out, options.overrides ? [] : (out.overrides || []));
   return out;
 };
 
@@ -222,7 +226,10 @@ const update = async (options = {}) => {
     updated.push({ ...item, picked, next });
   }), out = { ...result, updated, pending, interactive: options.interactive === true };
 
-  if (options.print !== false) printWarn(out.warnings), printUpdatePreview(out), printRoot(out.root), printGroups(out.updated, out.failed, '更新');
+  if (options.print !== false) {
+    printWarn(out.warnings), printUpdatePreview(out), printRoot(out.root);
+    printGroups(out.updated, out.failed, '更新', options.overrides ? [] : (out.overrides || []));
+  }
   return out;
 };
 

@@ -2,7 +2,9 @@
 import chalk from 'chalk';
 import readline from 'readline';
 import { check, install, update } from '../index.js';
-import { printGroups, printHead, printInstall, printOverrides, printRoot, printTitle, printUpdatePreview, printWarn } from '../render.js';
+import {
+  printGroups, printHead, printInstall, printOverrides, printRoot, printTitle, printUpdatePreview, printWarn
+} from '../render.js';
 
 let rl = null;
 const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(arg)),
@@ -58,8 +60,7 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
       if (!n) return false;
       rl || (rl = readline.createInterface({ input: process.stdin, output: process.stdout }));
       return await new Promise(resolve => rl.question(
-        chalk.gray(`    是否同时更新 ${n} 项 overrides? [y/N]: `),
-        ans => resolve(/^y(es)?$/i.test(String(ans).trim()))));
+        chalk.gray(`    是否同时更新 ${n} 项 overrides? [y/N]: `), ans => resolve(/^y(es)?$/i.test(String(ans).trim()))));
     } catch { return false; }
   }, fail = err => {
     console.error(`    ${chalk.red('✗ ')}${chalk.gray(err?.message || String(err))}`), process.exitCode = 1;
@@ -101,10 +102,11 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
     try {
       const probe = await check({ refresh, overrides: true, print: false });
       printWarn(probe.warnings), printUpdatePreview(probe);
-      const _ovr = await resolveOverrides(probe);
-      const result = await update({
-        refresh, overrides: _ovr, print: false, choose: (chooseArg === 's' || chooseArg === 'stable') ? (it => it.latest) : (it => it.target || it.latest)
-      });
+      const _ovr = await resolveOverrides(probe),
+        result = await update({
+          refresh, overrides: _ovr, print: false, choose: (chooseArg === 's' || chooseArg === 'stable') ?
+            (it => it.latest) : (it => it.target || it.latest)
+        });
       printRoot(result.root), printGroups(result.updated, result.failed, '更新');
     } catch (err) { fail(err); } finally { closeAsk(); }
   };
