@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { compareVer, resolveLatest, resolvePrerelease } from './net.js';
 import {
-  printBody, printGroups, printHead, printInstall, printOverrides, printRoot, printTitle, printUpdatePreview, printWarn
+  printBody, printHead, printInstall, printOverrides, printTitle, printUpdate, printWarn
 } from './render.js';
 
 const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'],
@@ -203,7 +203,7 @@ const install = async (options = {}) => {
       catch (err) { failed.push({ ...item, reason: err.message || String(err) }); }
     }), out = { ...result, updated, installed, failed, pending, command: npm, interactive: options.interactive === true };
 
-  if (options.print !== false) printTitle('安装依赖'), printInstall(out, options.overrides ? [] : (out.overrides || []));
+  if (options.print !== false) printTitle('安装'), printInstall(out, options.overrides ? [] : (out.overrides || []));
   return out;
 };
 
@@ -226,10 +226,7 @@ const update = async (options = {}) => {
     updated.push({ ...item, picked, next });
   }), out = { ...result, updated, pending, interactive: options.interactive === true };
 
-  if (options.print !== false) {
-    printWarn(out.warnings), printUpdatePreview(out), printRoot(out.root);
-    printGroups(out.updated, out.failed, '更新', options.overrides ? [] : (out.overrides || []));
-  }
+  if (options.print !== false) printTitle('更新'), printUpdate(out, options.overrides ? [] : (out.overrides || []));
   return out;
 };
 
