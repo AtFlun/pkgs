@@ -12,8 +12,15 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
       const picked = await choose(item, ctx);
       if (picked) return { picked, next: item.prefix + picked };
     }
-    if ((choose === 's' || choose === 'stable') && compareVer(item.latest, item.current) > 0)
-      return { picked: item.latest, next: item.prefix + item.latest };
+    if (choose === 's' || choose === 'stable') {
+      if (compareVer(item.latest, item.current) > 0)
+        return { picked: item.latest, next: item.prefix + item.latest };
+      if (item.prerelease && compareVer(item.prerelease, item.current) > 0)
+        return { held: true, picked: item.current, next: item.range, reason: '显式指定稳定版,仅预发布更高' };
+    }
+    if ((choose === 'p' || choose === 'prerelease') && item.prerelease
+      && compareVer(item.prerelease, item.current) > 0)
+      return { picked: item.prerelease, next: item.prefix + item.prerelease };
     return { picked: item.target, next: item.next };
   },
   findRoot = start => {
@@ -168,9 +175,11 @@ const check = async (options = {}) => {
       list = [...result.upgrades, ...result.choices].concat(options.overrides ? (result.overrides || []) : []),
       maxNameW = Math.max(0, ...list.map(i => String(i.name).length));
     for (const item of list) {
-      const { picked, next } = await decideNext(item, options.choose, { maxNameW });
+      const decided = await decideNext(item, options.choose, { maxNameW });
+      if (decided.held) { pending.push({ ...item, ...decided, explicit: true }); continue; }
+      const { picked, next } = decided;
       if (next === item.range) {
-        if (item.mode === 'choose') pending.push({ ...item, picked, next });
+        if (item.mode === 'choose') pending.push({ ...item, picked, next, explicit: typeof options.choose === 'string' });
         continue;
       }
       await handleItem({ item, picked, next, manifest, result, updated, installed, failed });
@@ -193,6 +202,10 @@ const install = async (options = {}) => {
   if (options.print !== false) overrides = await printFlowStart('安装', probe, options.askOverrides, overrides);
   const { result, updated, installed, failed, pending } = await withUpgrades({ ...options, overrides, print: false },
     async ({ item, picked, next, manifest, result, updated, installed, failed }) => {
+      if (item.field === 'overrides') {
+        applyUpgrade({ item, picked, next, manifest, updated, installed }, { recordInstall: true });
+        return;
+      }
       try {
         const npmCli = (process.env.npm_execpath && fs.existsSync(process.env.npm_execpath)) ? process.env.npm_execpath
           : (() => {

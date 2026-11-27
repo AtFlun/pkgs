@@ -30,13 +30,11 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
       return rl.question(chalk.gray('    > '), ans => resolve(ans.trim() === '2' ? item.prerelease : item.latest));
     }
     if (item.mode === 'choose') {
-      console.log(chalk.gray('    ') + nm + chalk.gray(' 预发布已无更新,稳定版更高'));
-      console.log(`      ${chalk.green('1)')} 保持不变   ${chalk.gray('(默认)')}`);
-      console.log(`      ${chalk.green('2)')} 稳定版 ${chalk.green(item.latest)} ${chalk.gray('更高')}`);
+      console.log(chalk.gray('    ') + nm
+        + chalk.gray(' 请输入 1/2,输入2为稳定版,否则回车或1→保持当前'));
       if (!process.stdin.isTTY) return resolve(item.current);
       open();
-      return rl.question(chalk.gray('    请输入 1/2,回车默认 1: '), ans => resolve(ans.trim() === '2' ? item.latest
-        : item.current));
+      return rl.question(chalk.gray('    > '), ans => resolve(ans.trim() === '2' ? item.latest : item.current));
     }
     console.log(chalk.gray('    ') + nm
       + chalk.gray(' 请输入 1/2,输入2为稳定版,否则回车或1或任意键→预发布'));
