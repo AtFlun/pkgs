@@ -6,16 +6,27 @@ const dispWidth = text => {
   for (const ch of text) width += ch.codePointAt(0) > 127 ? 2 : 1;
   return width;
 },
+  _rowWidths = (rows, extraRows = [], minLatest = 0) => ({
+    name: Math.max(0, ...rows.map(r => dispWidth(String(r.name))), ...extraRows.map(r => dispWidth(String(r.name)))),
+    current: Math.max(0, ...rows.map(r => dispWidth(String(r.current))),
+      ...extraRows.map(r => dispWidth(String(r.current)))),
+    latest: Math.max(minLatest, ...rows.map(r => dispWidth(String(r.target != null ? r.target : r.latest))),
+      ...extraRows.map(r => dispWidth(String(r.target != null ? r.target : r.latest))))
+  }),
   padWidth = (text, width) => {
     const current = dispWidth(text);
     return current >= width ? text : text + ' '.repeat(width - current);
   },
-  /**
-   * 打印可选列表(预发布无更新但稳定版更高),按是否已写入分两种呈现
-   * @param {object} result 检查结果
-   * @param {boolean} [written=false] 是否已写入(决定文案)
-   * @returns {void}
-   */
+  _printRow = (row, widths, written) => {
+    const target = row.target != null ? row.target : row.latest,
+      pre = /-[0-9A-Za-z.-]+$/.test(String(target).replace(/[\^~]|>=|<=|>|<|=/g, '')),
+      rawTag = pre ? '预发布' : (written ? '稳定版' : '最新'), tag = (pre ?
+        chalk.magenta : chalk.greenBright)(padWidth('(' + rawTag + ')', 8));
+    console.log(`      ${chalk.cyanBright(padWidth(String(row.name), widths.name))}  `
+      + chalk.blue(`${padWidth(String(row.current), widths.current)} → `) +
+      chalk.green(padWidth(String(target), widths.latest + 1)) + tag + chalk.gray(`  ${row.field}`));
+  },
+  // 打印可选列表(预发布无更新但稳定版更高), 按是否已写入分两种呈现
   printChoices = (result, written = false) => {
     const done = new Set((result.updated || []).map(item => item.name)),
       base = result.updated ? (result.pending || []) : (result.choices || []),
@@ -43,13 +54,22 @@ const dispWidth = text => {
     const okMain = ok.filter(i => i.field !== 'overrides'), okOvr = ok.filter(i => i.field === 'overrides'),
       failMain = fail.filter(i => i.field !== 'overrides'), failOvr = fail.filter(i => i.field === 'overrides');
     console.log(`    ${chalk.cyan(verb + '结果:')}`);
-    if (okMain.length) console.log(`      ${chalk.green('✓ 成功')}  ${chalk.cyanBright(okMain.map(i => i.name).join('、'))}`);
-    if (okOvr.length) console.log(`      ${chalk.green('✓ 成功')}  ${chalk.cyanBright(okOvr.map(i => i.name).join('、'))}${chalk.gray('  overrides')}`);
-    if (failMain.length) console.log(`      ${chalk.red('✗ 失败')}  ${chalk.yellowBright(failMain.map(i => i.name).join('、'))}`);
-    if (failOvr.length) console.log(`      ${chalk.red('✗ 失败')}  ${chalk.yellowBright(failOvr.map(i => i.name).join('、'))}${chalk.gray('  overrides')}`);
-    if (ignoredList && ignoredList.length) console.log(`      ${chalk.yellow('! 忽略')}  ${chalk.cyanBright(ignoredList.map(i => i.name).join('、'))}${chalk.gray(' (未显式指定 overrides 指令参数)')}`);
+    if (okMain.length)
+      console.log(`      ${chalk.green('✓ 成功')}  ${chalk.cyanBright(okMain.map(i => i.name).join('、'))}`);
+    if (okOvr.length)
+      console.log(`      ${chalk.green('✓ 成功')}  ${chalk.cyanBright(okOvr.map(i => i.name).join('、'))}${chalk.gray('  overrides')}`);
+    if (failMain.length)
+      console.log(`      ${chalk.red('✗ 失败')}  ${chalk.yellowBright(failMain.map(i => i.name).join('、'))}`);
+    if (failOvr.length)
+      console.log(`      ${chalk.red('✗ 失败')}  ${chalk.yellowBright(failOvr.map(i => i.name).join('、'))}${chalk.gray('  overrides')}`);
+    if (ignoredList && ignoredList.length)
+      console.log(`      ${chalk.yellow('! 忽略')}  ${chalk.cyanBright(ignoredList.map(i => i.name).join('、'))}${chalk.gray(' (未显式指定 overrides 指令参数)')}`);
   },
   printRoot = root => console.log(`    ${chalk.cyan('根目录 ')}${chalk.gray(root)}`),
+  printRows = (rows, opts = {}) => {
+    const { written = false, extra } = opts, ex = extra || {}, widths = _rowWidths(rows, ex.rows || [], ex.minLatest || 0);
+    for (const row of rows) _printRow(row, widths, written);
+  },
   printOverrides = (result, hint) => {
     const list = (result && result.overrides) || [];
     if (!list.length) { console.log(''); return; }
@@ -62,25 +82,6 @@ const dispWidth = text => {
       current: item.current, target: item.target || item.latest, field: 'overrides'
     })), { written: false, extra: { rows: mainRows } });
     console.log('');
-  },
-  printUpdatePreview = (result, verb) => {
-    const mainRows = ((result && result.upgrades) || []).concat((result && result.upgrades) || []).concat((result && result.updated) || [])
-      .filter(item => item && item.field !== 'overrides')
-      .filter((item, i, arr) => arr.findIndex(x => x.name === item.name) === i)
-      .map(item => ({ name: item.name, current: item.current, target: item.target || item.latest, field: item.field || 'dependencies' })),
-      ovrRows = ((result && result.overrides) || [])
-        .map(item => ({ name: item.path ? item.path.join(' > ') : item.name, current: item.current, target: item.target || item.latest, field: 'overrides' }));
-    if (!mainRows.length && !ovrRows.length) return;
-    const widths = _rowWidths(mainRows.concat(ovrRows));
-    if (mainRows.length) {
-      console.log(`    ${chalk.green(verb || '更新依赖')}`);
-      for (const r of mainRows) _printRow(r, widths, true);
-    }
-    if (ovrRows.length) {
-      console.log(`    ${chalk.cyan('overrides 可升项')}`);
-      for (const r of ovrRows) _printRow(r, widths, false);
-      console.log('');
-    }
   },
   printStableHint = result => {
     if (result.interactive) return;
@@ -96,23 +97,32 @@ const dispWidth = text => {
     console.log(`    ${chalk.yellow('提示 ')}${names}${chalk.gray(' 有更高稳定版 → ')}${vers}`);
     console.log(`    ${chalk.gray('如需升级最新稳定版请传参 ')}${chalk.cyan('{choose:s}')}${chalk.gray(' 后重新执行')}`);
   },
-  _rowWidths = (rows, extraRows = [], minLatest = 0) => ({
-    name: Math.max(0, ...rows.map(r => dispWidth(String(r.name))), ...extraRows.map(r => dispWidth(String(r.name)))),
-    current: Math.max(0, ...rows.map(r => dispWidth(String(r.current))), ...extraRows.map(r => dispWidth(String(r.current)))),
-    latest: Math.max(minLatest, ...rows.map(r => dispWidth(String(r.target != null ? r.target : r.latest))), ...extraRows.map(r => dispWidth(String(r.target != null ? r.target : r.latest))))
-  }),
-  _printRow = (row, widths, written) => {
-    const target = row.target != null ? row.target : row.latest,
-      pre = /-[0-9A-Za-z.-]+$/.test(String(target).replace(/[\^~]|>=|<=|>|<|=/g, '')),
-      rawTag = pre ? '预发布' : (written ? '稳定版' : '最新'), tag = (pre ? chalk.magenta : chalk.greenBright)(padWidth('(' + rawTag + ')', 8));
-    console.log(`      ${chalk.cyanBright(padWidth(String(row.name), widths.name))}  `
-      + chalk.blue(`${padWidth(String(row.current), widths.current)} → `) + chalk.green(padWidth(String(target), widths.latest + 1))
-      + tag + chalk.gray(`  ${row.field}`));
-  },
-  printRows = (rows, opts = {}) => {
-    const { written = false, extra } = opts, ex = extra || {},
-      widths = _rowWidths(rows, ex.rows || [], ex.minLatest || 0);
-    for (const row of rows) _printRow(row, widths, written);
+  printTitle = title => console.log(chalk.blueBright(`\n  ${title}`)),
+  printHead = (title, root) => (printTitle(title), printRoot(root)),
+  printUpdatePreview = (result, verb) => {
+    const mainRows = ((result && result.upgrades) || []).concat((result && result.upgrades) || [])
+      .concat((result && result.updated) || [])
+      .filter(item => item && item.field !== 'overrides')
+      .filter((item, i, arr) => arr.findIndex(x => x.name === item.name) === i)
+      .map(item => ({
+        name: item.name, current: item.current, target: item.target || item.latest, field: item.field || 'dependencies'
+      })),
+      ovrRows = ((result && result.overrides) || [])
+        .map(item => ({
+          name: item.path ? item.path.join(' > ') : item.name, current: item.current,
+          target: item.target || item.latest, field: 'overrides'
+        }));
+    if (!mainRows.length && !ovrRows.length) return;
+    const widths = _rowWidths(mainRows.concat(ovrRows));
+    if (mainRows.length) {
+      console.log(`    ${chalk.green(verb || '更新依赖')}`);
+      for (const r of mainRows) _printRow(r, widths, true);
+    }
+    if (ovrRows.length) {
+      console.log(`    ${chalk.cyan('overrides 可升项')}`);
+      for (const r of ovrRows) _printRow(r, widths, false);
+      console.log('');
+    }
   },
   printVersionTable = (view, written, label, extraLatest = 0) => {
     const paint = written ? chalk.green : chalk.cyan;
@@ -125,66 +135,69 @@ const dispWidth = text => {
       target: written ? (item.picked || item.next || item.target || item.latest) : (item.target || item.latest),
       field: item.field
     })), { written, extra: { minLatest: extraLatest || 0 } });
-  };
-/**
- * 打印主体(版本表/跳过/分组/可选/稳定版提示)
- * >查看定义:@see {@link printBody}
- * @param {object} result 检查结果
- * @param {boolean} [written=false] 是否已写入
- * @param {string} [verb] 表头动词,缺省按 written 推导
- * @returns {void}
- */
-const printBody = (result, written = false, verb, tail = true) => {
-  const label = verb || (written ? '已更新' : '可升级'),
-    view = ((written ? (result.updated || result.upgrades) : result.upgrades) || [])
-      .filter(item => item.field !== 'overrides');
-  if (view.length) {
-    const ovrLatest = Math.max(0, ...((result && result.overrides) || []).map(o => dispWidth(String(o.target || o.latest))));
-    printVersionTable(view, written, label, ovrLatest);
-  }
-  else if (!(result.choices || []).length && !(result.pending || []).length)
-    console.log(`    ${chalk.cyan('状态 ')}${chalk.green(written ? '全部依赖已是最新' : '没有可升级的依赖')}`);
-  if (result.skipped.length) {
-    const widths = {
-      name: Math.max(...result.skipped.map(item => dispWidth(item.name))),
-      range: Math.max(...result.skipped.map(item => dispWidth(item.range)))
-    };
-    console.log(`    ${chalk.yellow('跳过 ')}${chalk.yellowBright(String(result.skipped.length))}` + chalk.yellow(' 项'));
-    for (const item of result.skipped) {
-      const paint = item.reason.startsWith('星号') ? chalk.dim : chalk.yellow;
-      console.log(`      ${paint(padWidth(item.name, widths.name))}  `
-        + chalk.gray(`${padWidth(item.range, widths.range)} · ${item.reason}`));
+  },
+  // 打印主体(版本表 / 跳过 / 分组 / 可选 / 稳定版提示)
+  printBody = (result, written = false, verb, tail = true) => {
+    const label = verb || (written ? '已更新' : '可升级'),
+      view = ((written ? (result.updated || result.upgrades) : result.upgrades) || [])
+        .filter(item => item.field !== 'overrides');
+    if (view.length) {
+      const ovrLatest = Math.max(0, ...((result && result.overrides) || [])
+        .map(o => dispWidth(String(o.target || o.latest))));
+      printVersionTable(view, written, label, ovrLatest);
     }
-  }
-  if (written && tail) printRoot(result.root);
-  if (written && tail) printGroups(result.updated, result.failed, '更新');
-  if (tail) printChoices(result, written), printStableHint(result);
+    else if (!(result.choices || []).length && !(result.pending || []).length)
+      console.log(`    ${chalk.cyan('状态 ')}${chalk.green(written ? '全部依赖已是最新' : '没有可升级的依赖')}`);
+    if (result.skipped.length) {
+      const widths = {
+        name: Math.max(...result.skipped.map(item => dispWidth(item.name))),
+        range: Math.max(...result.skipped.map(item => dispWidth(item.range)))
+      };
+      console.log(`    ${chalk.yellow('跳过 ')}${chalk.yellowBright(String(result.skipped.length))}` + chalk.yellow(' 项'));
+      for (const item of result.skipped) {
+        const paint = item.reason.startsWith('星号') ? chalk.dim : chalk.yellow;
+        console.log(`      ${paint(padWidth(item.name, widths.name))}  `
+          + chalk.gray(`${padWidth(item.range, widths.range)} · ${item.reason}`));
+      }
+    }
+    if (written && tail) printRoot(result.root);
+    if (written && tail) printGroups(result.updated, result.failed, '更新');
+    if (tail) printChoices(result, written), printStableHint(result);
+  },
+  printWarn = texts => {
+    for (const text of texts) console.log(`    ${chalk.yellow('⚠ ')}${chalk.gray(text)}`);
+  },
+  printResult = (result, ignoredList, verb, list, previewed) => {
+    printWarn(result.warnings);
+    if (!previewed) printUpdatePreview(result, verb + '依赖');
+    printRoot(result.root), printGroups(list, result.failed, verb, ignoredList);
+  };
+
+/**
+ * 检查结果的展示组装(标题+警告+版本表+overrides 表),命令行与函数路径共用;
+ * >查看定义:@see {@link printCheck}
+ * @param {object} result check 结果(含 root/warnings/overrides)
+ */
+const printCheck = result => {
+  printHead('检查可升级依赖', result.root), printWarn(result.warnings), printBody(result);
+  (result.overrides || []).length && printOverrides(result);
 };
-/**
- * 打印分组标题
- * >查看定义:@see {@link printTitle}
- * @param {string} title 标题文本
- * @returns {void}
- */
-const printTitle = title => console.log(chalk.blueBright(`\n  ${title}`));
 
 /**
- * 打印标题与根目录(组合 printTitle + printRoot)
- * >查看定义:@see {@link printHead}
- * @param {string} title 标题文本
- * @param {string} root 根目录路径
- * @returns {void}
+ * 流程起始组装(标题+警告+预览表+按需询问 overrides),顺序在此收口;
+ * 返回解析后的 overrides(询问为真则含 overrides 项)
+ * >查看定义:@see {@link printFlowStart}
+ * @param {'安装'|'更新'} verb 表头动词
+ * @param {object} probe check 结果(含 warnings/overrides/upgrades)
+ * @param {(probe)=>Promise<boolean>} askOverrides 交互询问回调,无则跳过
+ * @param {*} overridesOpt 显式 overrides 参数(函数用法)
  */
-const printHead = (title, root) => (printTitle(title), printRoot(root));
-
-/**
- * 逐条打印警告
- * >查看定义:@see {@link printWarn}
- * @param {string[]} texts 警告文本数组
- * @returns {void}
- */
-const printWarn = texts => {
-  for (const text of texts) console.log(`    ${chalk.yellow('⚠ ')}${chalk.gray(text)}`);
+const printFlowStart = async (verb, probe, askOverrides, overridesOpt) => {
+  let overrides = overridesOpt;
+  printTitle(verb), printWarn(probe.warnings), printUpdatePreview(probe, verb + '依赖');
+  if ((probe.overrides || []).length && overridesOpt === undefined && askOverrides)
+    overrides = await askOverrides(probe);
+  return overrides;
 };
 
 /**
@@ -193,43 +206,19 @@ const printWarn = texts => {
  * @param {object} result 安装结果
  * @returns {void}
  */
-const printResult = (result, ignoredList, verb, list, previewed) => {
-  printWarn(result.warnings);
-  if (!previewed) printUpdatePreview(result, verb + '依赖');
-  printRoot(result.root), printGroups(list, result.failed, verb, ignoredList);
-};
 const printInstall = (result, ignoredList, previewed) => {
   printResult(result, ignoredList, '安装', result.installed, previewed);
   printStableHint(result), console.log('');
 };
+
+/**
+ * 打印更新结果(警告/版本表/根目录/分组/稳定版提示)
+ * >查看定义:@see {@link printUpdate}
+ * @param {object} result 更新结果
+ * @returns {void}
+ */
 const printUpdate = (result, ignoredList, previewed) => {
   printResult(result, ignoredList, '更新', result.updated, previewed);
 };
 
-/**
- * 流程起始组装(标题+警告+预览表+按需询问 overrides),顺序在此收口;
- * 返回解析后的 overrides(询问为真则含 overrides 项)
- * @param {'安装'|'更新'} verb 表头动词
- * @param {object} probe check 结果(含 warnings/overrides/upgrades)
- * @param {(probe)=>Promise<boolean>} askOverrides 交互询问回调,无则跳过
- * @param {*} overridesOpt 显式 overrides 参数(函数用法)
- */
-const printFlowStart = async (verb, probe, askOverrides, overridesOpt) => {
-  let overrides = overridesOpt;
-  printTitle(verb);
-  printWarn(probe.warnings);
-  printUpdatePreview(probe, verb + '依赖');
-  if ((probe.overrides || []).length && overridesOpt === undefined && askOverrides)
-    overrides = await askOverrides(probe);
-  return overrides;
-};
-
-/**
- * 检查结果的展示组装(标题+警告+版本表+overrides 表),命令行与函数路径共用;
- * @param {object} result check 结果(含 root/warnings/overrides)
- */
-const printCheck = result => {
-  printHead('检查可升级依赖', result.root), printWarn(result.warnings), printBody(result);
-  (result.overrides || []).length && printOverrides(result);
-};
-export { printInstall, printUpdate, printFlowStart, printCheck };
+export { printCheck, printFlowStart, printInstall, printUpdate };
