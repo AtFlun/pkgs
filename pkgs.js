@@ -2,9 +2,7 @@ import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { compareVer, resolveLatest, resolvePrerelease } from './net.js';
-import {
-  printBody, printHead, printInstall, printOverrides, printTitle, printUpdate, printWarn
-} from './render.js';
+import { printBody, printHead, printInstall, printOverrides, printTitle, printUpdate, printWarn } from './render.js';
 
 const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'],
   SEMVER = /^(?<prefix>\^|~|>=|<=|>|<|=)?(?<version>\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/,

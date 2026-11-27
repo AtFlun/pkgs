@@ -193,18 +193,16 @@ const printWarn = texts => {
  * @param {object} result 安装结果
  * @returns {void}
  */
-const printResult = (result, ignoredList, verb, list) => {
+const printResult = (result, ignoredList, verb, list, previewed) => {
   printWarn(result.warnings);
-  printUpdatePreview(result, verb + '依赖');
+  if (!previewed) printUpdatePreview(result, verb + '依赖');
   printRoot(result.root), printGroups(list, result.failed, verb, ignoredList);
 };
-const printInstall = (result, ignoredList) => {
-  printResult(result, ignoredList, '安装', result.installed);
+const printInstall = (result, ignoredList, previewed) => {
+  printResult(result, ignoredList, '安装', result.installed, previewed);
   printStableHint(result), console.log('');
 };
-const printUpdate = (result, ignoredList) => {
-  printResult(result, ignoredList, '更新', result.updated);
+const printUpdate = (result, ignoredList, previewed) => {
+  printResult(result, ignoredList, '更新', result.updated, previewed);
 };
-export {
-  printBody, printGroups, printHead, printInstall, printOverrides, printRoot, printTitle, printUpdate, printWarn
-};
+export { printBody, printHead, printInstall, printOverrides, printTitle, printUpdate, printUpdatePreview, printWarn };

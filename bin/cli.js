@@ -2,9 +2,7 @@
 import chalk from 'chalk';
 import readline from 'readline';
 import { check, install, update } from '../index.js';
-import {
-  printGroups, printHead, printInstall, printOverrides, printRoot, printTitle, printUpdatePreview, printWarn
-} from '../render.js';
+import { printBody, printHead, printInstall, printTitle, printUpdate, printUpdatePreview, printWarn } from '../render.js';
 
 let rl = null;
 const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(arg)),
@@ -91,23 +89,28 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
   },
   runInstall = async refresh => {
     try {
-      printTitle('安装依赖');
-      const result = await install({
-        refresh, overrides: await resolveOverrides(), print: false, choose: chooseArg || askChoose, interactive: true
-      });
-      printInstall(result);
+      printTitle('安装');
+      const probe = await check({ refresh, overrides: true, print: false });
+      printWarn(probe.warnings);
+      printUpdatePreview(probe, '安装依赖');
+      const ovr = await resolveOverrides(probe),
+        result = await install({
+          refresh, overrides: ovr, print: false, choose: chooseArg || askChoose, interactive: true
+        });
+      printInstall(result, ovr ? [] : (result.overrides || []), true);
     } catch (err) { fail(err); } finally { closeAsk(); }
   },
   runUpdate = async refresh => {
     try {
+      printTitle('更新');
       const probe = await check({ refresh, overrides: true, print: false });
-      printWarn(probe.warnings), printUpdatePreview(probe);
-      const _ovr = await resolveOverrides(probe),
+      printWarn(probe.warnings);
+      printUpdatePreview(probe, '更新依赖');
+      const ovr = await resolveOverrides(probe),
         result = await update({
-          refresh, overrides: _ovr, print: false, choose: (chooseArg === 's' || chooseArg === 'stable') ?
-            (it => it.latest) : (it => it.target || it.latest)
+          refresh, overrides: ovr, print: false, choose: chooseArg || askChoose, interactive: true
         });
-      printRoot(result.root), printGroups(result.updated, result.failed, '更新');
+      printUpdate(result, ovr ? [] : (result.overrides || []), true);
     } catch (err) { fail(err); } finally { closeAsk(); }
   };
 
