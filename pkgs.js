@@ -2,7 +2,7 @@ import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { compareVer, resolveLatest, resolvePrerelease } from './net.js';
-import { printBody, printHead, printInstall, printOverrides, printTitle, printUpdate, printWarn } from './render.js';
+import { printInstall, printUpdate, printFlowStart, printCheck } from './render.js';
 
 const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'],
   SEMVER = /^(?<prefix>\^|~|>=|<=|>|<|=)?(?<version>\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/,
@@ -77,6 +77,17 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
     const leaf = pth[pth.length - 1];
     if (node[leaf] !== undefined) node[leaf] = next;
   },
+  applyUpgrade = (ctx, { recordInstall = false, skipMissing = false } = {}) => {
+    const { item, picked, next, manifest, updated, installed } = ctx;
+    if (item.field === 'overrides') setOverride(manifest, item.path, next);
+    else {
+      const block = manifest[item.field];
+      if (!block || !(item.name in block)) { if (skipMissing) return; }
+      else if (block[item.name] !== next) block[item.name] = next;
+    }
+    if (recordInstall) installed.push({ ...item, picked, next });
+    updated.push({ ...item, picked, next });
+  },
   writeManifest = (root, manifest) => {
     const file = path.join(root, 'package.json'), raw = fs.readFileSync(file, 'utf8'),
       sample = /\n([ \t]+)\S/.exec(raw), indent = sample ? sample[1] : '  ',
@@ -146,17 +157,15 @@ const check = async (options = {}) => {
   }
   if (options.overrides) upgrades.push(...overridesUpgrades);
   const result = { root, upgrades, choices, skipped, online, warnings, overrides: overridesUpgrades };
-  if (options.print !== false) {
-    printHead('检查可升级依赖', root), printWarn(warnings), printBody(result);
-    (result.overrides || []).length && printOverrides(result);
-  }
+  if (options.print !== false) printCheck(result);
   return result;
 },
   // 抽出 update/install 共用骨架,差异由 handleItem 承担;依赖 check 与 writeManifest 故排其后
-  withUpgrades = async (options, handleItem) => {
-    const result = await check({ ...options, print: false }), manifest = readManifest(result.root), updated = [],
-      installed = [], failed = [], pending = [];
-    for (const item of [...result.upgrades, ...result.choices]) {
+  withUpgrades = async (options, handleItem, preResult) => {
+    const result = preResult || await check({ ...options, print: false }), manifest = readManifest(result.root),
+      updated = [], installed = [], failed = [], pending = [],
+      list = [...result.upgrades, ...result.choices].concat(options.overrides ? (result.overrides || []) : []);
+    for (const item of list) {
       const { picked, next } = await decideNext(item, options.choose);
       if (next === item.range) {
         if (item.mode === 'choose') pending.push({ ...item, picked, next });
@@ -167,20 +176,22 @@ const check = async (options = {}) => {
     if (updated.length || installed.length) writeManifest(result.root, manifest);
     return { result, updated, installed, failed, pending };
   };
-
 /**
- * 逐包升级并安装依赖,默认打印结果;每个包单独执行 npm install <name>@<picked>,
- * 成功写入 package.json 并计入 installed,失败计入 failed 且不中断继续下一个
- * >查看定义:@see {@link install}
- * @param {{root?: string, refresh?: boolean, stdio?: string, choose?: 'p'|'s'|Function, print?: boolean}} [options]
- * 同 check; stdio 传给 npm;choose 同 update('p'/'s' 或回调);print 传 false 时不打印
- * @returns {Promise<object>} check 结果加 installed 成功项、failed 失败项、command(npm 命令名)
- */
+* 逐包升级并安装依赖,默认打印结果;每个包单独执行 npm install <name>@<picked>,
+* 成功写入 package.json 并计入 installed,失败计入 failed 且不中断继续下一个
+* >查看定义:@see {@link install}
+* @param {{root?: string, refresh?: boolean, stdio?: string, choose?: 'p'|'s'|Function, print?: boolean}} [options]
+* 同 check; stdio 传给 npm;choose 同 update('p'/'s' 或回调);print 传 false 时不打印
+* @returns {Promise<object>} check 结果加 installed 成功项、failed 失败项、command(npm 命令名)
+*/
 const install = async (options = {}) => {
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm', { result, updated, installed, failed, pending } =
-    await withUpgrades(options, async ({ item, picked, next, manifest, result, updated, installed, failed }) => {
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  let overrides = options.overrides;
+  const probe = await check({ ...options, overrides: true, print: false });
+  if (options.print !== false) overrides = await printFlowStart('安装', probe, options.askOverrides, overrides);
+  const { result, updated, installed, failed, pending } = await withUpgrades({ ...options, overrides, print: false },
+    async ({ item, picked, next, manifest, result, updated, installed, failed }) => {
       try {
-        // 优先直调 npm-cli.js(shell:false)规避 DEP0190 与 win32 的 npm.cmd EINVAL;找不到再回退 npm.cmd
         const npmCli = (process.env.npm_execpath && fs.existsSync(process.env.npm_execpath)) ? process.env.npm_execpath
           : (() => {
             const guess = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
@@ -191,17 +202,12 @@ const install = async (options = {}) => {
         else execFileSync(npm, ['install', `${item.name}@${picked}`],
           { cwd: result.root, stdio: options.stdio || 'pipe', shell: true });
 
-        if (item.field === 'overrides') setOverride(manifest, item.path, next);
-        else {
-          const block = manifest[item.field];
-          if (block && item.name in block && block[item.name] !== next) block[item.name] = next;
-        }
-        installed.push({ ...item, picked, next }), updated.push({ ...item, picked, next });
+        applyUpgrade({ item, picked, next, manifest, updated, installed }, { recordInstall: true });
       }
       catch (err) { failed.push({ ...item, reason: err.message || String(err) }); }
-    }), out = { ...result, updated, installed, failed, pending, command: npm, interactive: options.interactive === true };
-
-  if (options.print !== false) printTitle('安装'), printInstall(out, options.overrides ? [] : (out.overrides || []));
+    }, probe),
+    out = { ...result, updated, installed, failed, pending, command: npm, interactive: options.interactive === true };
+  if (options.print !== false) printInstall(out, overrides ? [] : (out.overrides || []), true);
   return out;
 };
 
@@ -214,17 +220,15 @@ const install = async (options = {}) => {
  * @returns {Promise<object>} check 结果加 updated 已写入项
  */
 const update = async (options = {}) => {
-  const { result, updated, pending } = await withUpgrades(options, ({ item, picked, next, manifest, updated }) => {
-    if (item.field === 'overrides') setOverride(manifest, item.path, next);
-    else {
-      const block = manifest[item.field];
-      if (!block || !(item.name in block)) return;
-      block[item.name] = next;
-    }
-    updated.push({ ...item, picked, next });
-  }), out = { ...result, updated, pending, interactive: options.interactive === true };
-
-  if (options.print !== false) printTitle('更新'), printUpdate(out, options.overrides ? [] : (out.overrides || []));
+  let overrides = options.overrides;
+  const probe = await check({ ...options, overrides: true, print: false });
+  if (options.print !== false) overrides = await printFlowStart('更新', probe, options.askOverrides, overrides);
+  const { result, updated, pending } = await withUpgrades({ ...options, overrides, print: false },
+    ({ item, picked, next, manifest, updated }) => {
+      applyUpgrade({ item, picked, next, manifest, updated }, { skipMissing: true });
+    }, probe);
+  const out = { ...result, updated, pending, interactive: options.interactive === true };
+  if (options.print !== false) printUpdate(out, overrides ? [] : (out.overrides || []), true);
   return out;
 };
 

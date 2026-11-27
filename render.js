@@ -205,4 +205,31 @@ const printInstall = (result, ignoredList, previewed) => {
 const printUpdate = (result, ignoredList, previewed) => {
   printResult(result, ignoredList, '更新', result.updated, previewed);
 };
-export { printBody, printHead, printInstall, printOverrides, printTitle, printUpdate, printUpdatePreview, printWarn };
+
+/**
+ * 流程起始组装(标题+警告+预览表+按需询问 overrides),顺序在此收口;
+ * 返回解析后的 overrides(询问为真则含 overrides 项)
+ * @param {'安装'|'更新'} verb 表头动词
+ * @param {object} probe check 结果(含 warnings/overrides/upgrades)
+ * @param {(probe)=>Promise<boolean>} askOverrides 交互询问回调,无则跳过
+ * @param {*} overridesOpt 显式 overrides 参数(函数用法)
+ */
+const printFlowStart = async (verb, probe, askOverrides, overridesOpt) => {
+  let overrides = overridesOpt;
+  printTitle(verb);
+  printWarn(probe.warnings);
+  printUpdatePreview(probe, verb + '依赖');
+  if ((probe.overrides || []).length && overridesOpt === undefined && askOverrides)
+    overrides = await askOverrides(probe);
+  return overrides;
+};
+
+/**
+ * 检查结果的展示组装(标题+警告+版本表+overrides 表),命令行与函数路径共用;
+ * @param {object} result check 结果(含 root/warnings/overrides)
+ */
+const printCheck = result => {
+  printHead('检查可升级依赖', result.root), printWarn(result.warnings), printBody(result);
+  (result.overrides || []).length && printOverrides(result);
+};
+export { printInstall, printUpdate, printFlowStart, printCheck };

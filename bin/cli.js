@@ -2,7 +2,6 @@
 import chalk from 'chalk';
 import readline from 'readline';
 import { check, install, update } from '../index.js';
-import { printBody, printHead, printInstall, printTitle, printUpdate, printUpdatePreview, printWarn } from '../render.js';
 
 let rl = null;
 const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(arg)),
@@ -45,22 +44,21 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
     open();
     return rl.question(chalk.gray('    > '), ans => resolve(ans.trim() === '2' ? item.latest : item.target));
   }),
-  closeAsk = () => {
-    if (!rl) return;
-    rl.close(), rl = null;
-  },
-  resolveOverrides = async (probe) => {
-    if (overrides) return true;
+  askOverrideCount = async probe => {
     if (!process.stdin.isTTY) return false;
     try {
-      probe = probe || await check({ refresh, overrides: true, print: false });
       const n = (probe.overrides || []).length;
       if (!n) return false;
       rl || (rl = readline.createInterface({ input: process.stdin, output: process.stdout }));
       return await new Promise(resolve => rl.question(
         chalk.gray(`    是否同时更新 ${n} 项 overrides? [y/N]: `), ans => resolve(/^y(es)?$/i.test(String(ans).trim()))));
     } catch { return false; }
-  }, fail = err => {
+  },
+  closeAsk = () => {
+    if (!rl) return;
+    rl.close(), rl = null;
+  },
+  fail = err => {
     console.error(`    ${chalk.red('✗ ')}${chalk.gray(err?.message || String(err))}`), process.exitCode = 1;
   },
   printHelp = () => {
@@ -82,35 +80,22 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
     ].join('\n'));
   },
   runCheck = async refresh => {
-    try {
-      const result = await check({ refresh, overrides, print: false });
-      printHead('检查可升级依赖', result.root), printWarn(result.warnings), printBody(result), printOverrides(result);
-    } catch (err) { fail(err); }
+    try { await check({ refresh, overrides, print: true }); } catch (err) { fail(err); }
   },
   runInstall = async refresh => {
     try {
-      printTitle('安装');
-      const probe = await check({ refresh, overrides: true, print: false });
-      printWarn(probe.warnings);
-      printUpdatePreview(probe, '安装依赖');
-      const ovr = await resolveOverrides(probe),
-        result = await install({
-          refresh, overrides: ovr, print: false, choose: chooseArg || askChoose, interactive: true
-        });
-      printInstall(result, ovr ? [] : (result.overrides || []), true);
+      await install({
+        refresh, overrides: overrides || undefined, askOverrides: askOverrideCount, print: true,
+        choose: chooseArg || askChoose, interactive: true, stdio: 'inherit'
+      });
     } catch (err) { fail(err); } finally { closeAsk(); }
   },
   runUpdate = async refresh => {
     try {
-      printTitle('更新');
-      const probe = await check({ refresh, overrides: true, print: false });
-      printWarn(probe.warnings);
-      printUpdatePreview(probe, '更新依赖');
-      const ovr = await resolveOverrides(probe),
-        result = await update({
-          refresh, overrides: ovr, print: false, choose: chooseArg || askChoose, interactive: true
-        });
-      printUpdate(result, ovr ? [] : (result.overrides || []), true);
+      await update({
+        refresh, overrides: overrides || undefined, askOverrides: askOverrideCount, print: true,
+        choose: chooseArg || askChoose, interactive: true
+      });
     } catch (err) { fail(err); } finally { closeAsk(); }
   };
 
