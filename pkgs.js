@@ -7,9 +7,9 @@ import { printInstall, printUpdate, printFlowStart, printCheck } from './render.
 const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'],
   SEMVER = /^(?<prefix>\^|~|>=|<=|>|<|=)?(?<version>\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/,
   // 目标版本已由 check 定好:回调优先;choose 为 s/stable 时切稳定版(不降级);否则跟随 check 结论
-  decideNext = async (item, choose) => {
+  decideNext = async (item, choose, ctx) => {
     if (typeof choose === 'function') {
-      const picked = await choose(item);
+      const picked = await choose(item, ctx);
       if (picked) return { picked, next: item.prefix + picked };
     }
     if ((choose === 's' || choose === 'stable') && compareVer(item.latest, item.current) > 0)
@@ -124,14 +124,14 @@ const check = async (options = {}) => {
   for (const item of ovOut) names.add(item.name), ovItems.push(item);
 
   const { data: latest, online } = await resolveLatest([...names], Boolean(options.refresh)),
-    { data: pre } = await resolvePrerelease(items.filter(i => i.pre && latest[i.name]).map(i => i.name));
+    { data: pre } = await resolvePrerelease(items.filter(i => latest[i.name]).map(i => i.name));
   for (const item of items) {
     const stable = latest[item.name];
     if (!stable) {
       skipped.push({ ...item, reason: online ? 'registry 无此包' : '离线,未取到版本' });
       continue;
     }
-    const preTarget = item.pre ? pre[item.name] || null : null, stableNewer = compareVer(stable, item.current) > 0,
+    const preTarget = pre[item.name] || null, stableNewer = compareVer(stable, item.current) > 0,
       preNewer = Boolean(preTarget) && compareVer(preTarget, item.current) > 0;
     if (item.pre) {
       if (preNewer)
@@ -144,7 +144,8 @@ const check = async (options = {}) => {
       });
     }
     else if (stableNewer) upgrades.push({
-      ...item, latest: stable, prerelease: null, target: stable, mode: 'stable', next: item.prefix + stable
+      ...item, latest: stable, prerelease: preTarget && compareVer(preTarget, stable) > 0 ? preTarget : null,
+      target: stable, mode: 'stable', next: item.prefix + stable
     });
   }
   const overridesUpgrades = [];
@@ -164,9 +165,10 @@ const check = async (options = {}) => {
   withUpgrades = async (options, handleItem, preResult) => {
     const result = preResult || await check({ ...options, print: false }), manifest = readManifest(result.root),
       updated = [], installed = [], failed = [], pending = [],
-      list = [...result.upgrades, ...result.choices].concat(options.overrides ? (result.overrides || []) : []);
+      list = [...result.upgrades, ...result.choices].concat(options.overrides ? (result.overrides || []) : []),
+      maxNameW = Math.max(0, ...list.map(i => String(i.name).length));
     for (const item of list) {
-      const { picked, next } = await decideNext(item, options.choose);
+      const { picked, next } = await decideNext(item, options.choose, { maxNameW });
       if (next === item.range) {
         if (item.mode === 'choose') pending.push({ ...item, picked, next });
         continue;
@@ -185,9 +187,9 @@ const check = async (options = {}) => {
 * @returns {Promise<object>} check 结果加 installed 成功项、failed 失败项、command(npm 命令名)
 */
 const install = async (options = {}) => {
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   let overrides = options.overrides;
-  const probe = await check({ ...options, overrides: true, print: false });
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm',
+    probe = await check({ ...options, overrides: false, print: false });
   if (options.print !== false) overrides = await printFlowStart('安装', probe, options.askOverrides, overrides);
   const { result, updated, installed, failed, pending } = await withUpgrades({ ...options, overrides, print: false },
     async ({ item, picked, next, manifest, result, updated, installed, failed }) => {
@@ -221,7 +223,7 @@ const install = async (options = {}) => {
  */
 const update = async (options = {}) => {
   let overrides = options.overrides;
-  const probe = await check({ ...options, overrides: true, print: false });
+  const probe = await check({ ...options, overrides: false, print: false });
   if (options.print !== false) overrides = await printFlowStart('更新', probe, options.askOverrides, overrides);
   const { result, updated, pending } = await withUpgrades({ ...options, overrides, print: false },
     ({ item, picked, next, manifest, updated }) => {

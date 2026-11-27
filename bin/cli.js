@@ -18,16 +18,19 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
     return true;
   }), cmd = rest[0],
   // 显式 --choose/-c 或 -s/-p 决定预发布/稳定版(与函数 choose 同形);都不传则询问交互
-  askChoose = item => new Promise(resolve => {
-    const open = () => { rl || (rl = readline.createInterface({ input: process.stdin, output: process.stdout })); };
+  askChoose = (item, ctx = {}) => new Promise(resolve => {
+    const open = () => { rl || (rl = readline.createInterface({ input: process.stdin, output: process.stdout })); },
+      nm = chalk.cyanBright(String(item.name).padEnd(ctx.maxNameW || 0));
     if (item.mode === 'stable') {
-      const nm = chalk.cyanBright(String(item.name).padEnd(24)), cur = chalk.blue(String(item.current).padEnd(8)),
-        lat = chalk.green(String(item.latest).padEnd(9));
-      console.log(`    ${nm}${cur}${chalk.gray('→ ')}${lat}${chalk.greenBright('(稳定版)')}`);
-      return resolve(item.latest);
+      if (!item.prerelease) return resolve(item.latest);
+      console.log(chalk.gray('    ') + nm
+        + chalk.gray(' 请输入 1/2,输入2为预发布,否则回车或1或任意键→稳定版'));
+      if (!process.stdin.isTTY) return resolve(item.latest);
+      open();
+      return rl.question(chalk.gray('    > '), ans => resolve(ans.trim() === '2' ? item.prerelease : item.latest));
     }
     if (item.mode === 'choose') {
-      console.log(`    ${chalk.cyan(item.name)}${chalk.gray(` 当前 ${item.current},预发布已无更新`)}`);
+      console.log(chalk.gray('    ') + nm + chalk.gray(' 预发布已无更新,稳定版更高'));
       console.log(`      ${chalk.green('1)')} 保持不变   ${chalk.gray('(默认)')}`);
       console.log(`      ${chalk.green('2)')} 稳定版 ${chalk.green(item.latest)} ${chalk.gray('更高')}`);
       if (!process.stdin.isTTY) return resolve(item.current);
@@ -35,11 +38,8 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
       return rl.question(chalk.gray('    请输入 1/2,回车默认 1: '), ans => resolve(ans.trim() === '2' ? item.latest
         : item.current));
     }
-    const head = `${chalk.cyanBright(String(item.name).padEnd(24))}${chalk.blue(String(item.current).padEnd(8))}→ `,
-      pre = `${chalk.magenta(item.target)}${chalk.magenta(' (预发布版)')}`,
-      or = `${chalk.gray('或')}  ${chalk.green(item.latest)}${chalk.greenBright(' (稳定版)')}`;
-    console.log(`    ${head}${pre}  ${or}`);
-    console.log(chalk.gray('    请输入 1/2,输入2为稳定版,否则回车或1或任意键→预发布'));
+    console.log(chalk.gray('    ') + nm
+      + chalk.gray(' 请输入 1/2,输入2为稳定版,否则回车或1或任意键→预发布'));
     if (!process.stdin.isTTY) return resolve(item.target);
     open();
     return rl.question(chalk.gray('    > '), ans => resolve(ans.trim() === '2' ? item.latest : item.target));
@@ -73,7 +73,7 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
       cmdLine('help', '输出本帮助'), '',
       grp('选项'),
       cmdLine('-r', '重新查询 registry,忽略 1 小时缓存;完整写法 --refresh'),
-      cmdLine('--choose', '预发布/稳定版: p|prerelease 预发布(缺省), s|stable 稳定版(简写 -c);仅 update/install 有效'),
+      cmdLine('--choose', '预发布/稳定版: p|prerelease 预发布, s|stable 稳定版(简写 -c);仅 update/install 有效'),
       cmdLine('-s', '等价于 --choose s(稳定版);对称地 -p/--prerelease 等价于 --choose p'),
       cmdLine('--overrides', '连同 overrides 可升项一起更新/安装;仅 update/install 有效,不传则交互询问'), '',
       `  ${chalk.gray('无参数、help、-h、--help 输出本帮助;')}`
