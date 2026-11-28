@@ -113,7 +113,7 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
  */
 const check = async (options = {}) => {
   const root = resolveRoot(options.root), manifest = readManifest(root), upgrades = [], choices = [], skipped = [],
-    items = [], ovItems = [], names = new Set(), warnings = [];
+    items = [], overridesUpgrades = [], ovItems = [], names = new Set(), warnings = [];
 
   for (const field of FIELDS) {
     const block = manifest[field];
@@ -156,7 +156,6 @@ const check = async (options = {}) => {
       target: stable, mode: 'stable', next: item.prefix + stable
     });
   }
-  const overridesUpgrades = [];
   for (const item of ovItems) {
     const stable = latest[item.name];
     if (!stable) skipped.push({ ...item, reason: online ? 'registry 无此包' : '离线,未取到版本' });
