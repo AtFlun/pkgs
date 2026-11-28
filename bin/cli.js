@@ -4,25 +4,19 @@ import readline from 'readline';
 import { check, install, update } from '../index.js';
 
 let rl = null, queue = [], waiter = null;
-const raw = process.argv.slice(2),
-  has = (...a) => raw.some(arg => a.includes(arg)),
+const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(arg)),
   chooseAt = (() => {
     const i = raw.findIndex(a => a === '--choose' || a === '-c');
     return i >= 0 ? (raw[i + 1] && !raw[i + 1].startsWith('-') ? raw[i + 1] : 'p') : null;
-  })(),
-  refresh = has('--refresh', '-r'),
-  stable = has('--stable', '-s'),
-  pre = has('--prerelease', '-p'),
-  overrides = has('--overrides'),
-  chooseArg = chooseAt || (stable ? 's' : pre ? 'p' : null),
+  })(), refresh = has('--refresh', '-r'), stable = has('--stable', '-s'), pre = has('--prerelease', '-p'),
+  overrides = has('--overrides'), chooseArg = chooseAt || (stable ? 's' : pre ? 'p' : null),
   rest = raw.filter((arg, i) => {
     if (['--refresh', '-r', '--stable', '-s', '--prerelease', '-p'].includes(arg)) return false;
     if (arg === '--overrides') return false;
     if (arg === '--choose' || arg === '-c') return false;
     if (i > 0 && (raw[i - 1] === '--choose' || raw[i - 1] === '-c')) return false;
     return true;
-  }),
-  cmd = rest[0],
+  }), cmd = rest[0],
   closeAsk = () => {
     if (!rl) return;
     rl.close(), rl = null, queue = [], waiter = null;
@@ -90,17 +84,15 @@ const raw = process.argv.slice(2),
       return askLine(item, ctx, `输入2为${oppName},输入任意键或1或确认键为${sameName}`,
         sameVer, ans => ans === '2' ? oppVer : sameVer);
     if (sameNewer) return Promise.resolve(sameVer);
-    if (oppNewer)
-      return askLine(item, ctx, `输入2为${oppName},输入任意键或1或确认键不升级${oppName}`,
-        item.current, ans => ans === '2' ? oppVer : item.current);
+    if (oppNewer) return askLine(item, ctx, `输入2为${oppName},输入任意键或1或确认键不升级${oppName}`,
+      item.current, ans => ans === '2' ? oppVer : item.current);
     return Promise.resolve(item.current);
   },
   askOverrideCount = async probe => {
     const n = (probe.overrides || []).length;
     if (!n) return false;
     try {
-      open();
-      process.stdout.write(chalk.gray(`    是否同时更新 ${n} 项 overrides? [y/N]: `));
+      open(), process.stdout.write(chalk.gray(`    是否同时更新 ${n} 项 overrides? [y/N]: `));
       const line = await readLine();
       echo(line);
       return /^y(es)?$/i.test(String(line || '').trim());
