@@ -13,14 +13,16 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
       if (picked) return { picked, next: item.prefix + picked };
     }
     if (choose === 's' || choose === 'stable') {
-      if (compareVer(item.latest, item.current) > 0) return { picked: item.latest, next: item.prefix + item.latest };
+      if (item.latest && compareVer(item.latest, item.current) > 0)
+        return { picked: item.latest, next: item.prefix + item.latest };
       if (item.prerelease && compareVer(item.prerelease, item.current) > 0)
         return { held: true, picked: item.current, next: item.range, reason: '显式指定稳定版,仅预发布更高' };
     }
     if (choose === 'p' || choose === 'prerelease') {
       if (item.prerelease && compareVer(item.prerelease, item.current) > 0)
         return { picked: item.prerelease, next: item.prefix + item.prerelease };
-      if (compareVer(item.latest, item.current) > 0) return { picked: item.latest, next: item.prefix + item.latest };
+      if (item.latest && compareVer(item.latest, item.current) > 0)
+        return { picked: item.latest, next: item.prefix + item.latest };
     }
     return { picked: item.target, next: item.next };
   },
@@ -145,23 +147,27 @@ const check = async (options = {}) => {
       if (preNewer)
         upgrades.push({
           ...item, latest: stableNewer ? stable : null, prerelease: preTarget, target: preTarget, mode: 'pre',
-          next: item.prefix + preTarget
+          next: item.prefix + preTarget, sameNewer: true, oppNewer: stableNewer
         });
       else if (stableNewer) choices.push({
         ...item, latest: stable, prerelease: preTarget, target: item.current, mode: 'choose',
-        next: item.prefix + item.current
+        next: item.prefix + item.current, sameNewer: false, oppNewer: true
       });
     }
-    else if (stableNewer) upgrades.push({
-      ...item, latest: stable, prerelease: preTarget && compareVer(preTarget, stable) > 0 ? preTarget : null,
-      target: stable, mode: 'stable', next: item.prefix + stable
-    });
+    else if (stableNewer) {
+      const oppPre = preTarget && compareVer(preTarget, stable) > 0 ? preTarget : null;
+      upgrades.push({
+        ...item, latest: stable, prerelease: oppPre, target: stable, mode: 'stable',
+        next: item.prefix + stable, sameNewer: true, oppNewer: Boolean(oppPre)
+      });
+    }
   }
   for (const item of ovItems) {
     const stable = latest[item.name];
     if (!stable) skipped.push({ ...item, reason: online ? 'registry 无此包' : '离线,未取到版本' });
     else if (compareVer(stable, item.current) > 0) overridesUpgrades.push({
-      ...item, latest: stable, prerelease: null, target: stable, mode: 'stable', next: item.prefix + stable
+      ...item, latest: stable, prerelease: null, target: stable, mode: 'stable',
+      next: item.prefix + stable, sameNewer: true, oppNewer: false
     });
   }
   if (options.overrides) upgrades.push(...overridesUpgrades);
