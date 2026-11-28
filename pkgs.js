@@ -2,7 +2,7 @@ import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { compareVer, resolveLatest, resolvePrerelease } from './net.js';
-import { printInstall, printUpdate, printFlowStart, printCheck } from './render.js';
+import { printCheck, printFlowStart, printInstall, printUpdate } from './render.js';
 
 const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'],
   SEMVER = /^(?<prefix>\^|~|>=|<=|>|<|=)?(?<version>\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/,
@@ -13,14 +13,15 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
       if (picked) return { picked, next: item.prefix + picked };
     }
     if (choose === 's' || choose === 'stable') {
-      if (compareVer(item.latest, item.current) > 0)
-        return { picked: item.latest, next: item.prefix + item.latest };
+      if (compareVer(item.latest, item.current) > 0) return { picked: item.latest, next: item.prefix + item.latest };
       if (item.prerelease && compareVer(item.prerelease, item.current) > 0)
         return { held: true, picked: item.current, next: item.range, reason: '显式指定稳定版,仅预发布更高' };
     }
-    if ((choose === 'p' || choose === 'prerelease') && item.prerelease
-      && compareVer(item.prerelease, item.current) > 0)
-      return { picked: item.prerelease, next: item.prefix + item.prerelease };
+    if (choose === 'p' || choose === 'prerelease') {
+      if (item.prerelease && compareVer(item.prerelease, item.current) > 0)
+        return { picked: item.prerelease, next: item.prefix + item.prerelease };
+      if (compareVer(item.latest, item.current) > 0) return { picked: item.latest, next: item.prefix + item.latest };
+    }
     return { picked: item.target, next: item.next };
   },
   findRoot = start => {
@@ -106,9 +107,9 @@ const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peer
 /**
  * 查询根目录 package.json 中可升级的依赖,默认打印结果
  * >查看定义:@see {@link check}
- * @param {{root?: string, refresh?: boolean, print?: boolean}} [options] root 指定项目根目录;
- *   refresh 忽略缓存;print 传 false 时不打印,便于调用方自行输出
- * @returns {Promise<object>} root、upgrades、skipped、online、warnings
+ * @param {{root?: string, refresh?: boolean, overrides?: boolean, print?: boolean}} [options] root 指定项目根目录;
+ *   refresh 忽略缓存;overrides 是否连同 overrides 可升项一起处理;print 传 false 时不打印,便于调用方自行输出
+ * @returns {Promise<object>} root、upgrades、choices、skipped、online、warnings、overrides
  */
 const check = async (options = {}) => {
   const root = resolveRoot(options.root), manifest = readManifest(root), upgrades = [], choices = [], skipped = [],
@@ -186,6 +187,16 @@ const check = async (options = {}) => {
     }
     if (updated.length || installed.length) writeManifest(result.root, manifest);
     return { result, updated, installed, failed, pending };
+  },
+  // 抽出 install/update 共用骨架:查询-询问-处理-写入-打印;差异由 handleItem/makeOut/printer 承担
+  runFlow = async (verb, options, handleItem, makeOut, printer) => {
+    let overrides = options.overrides;
+    const probe = await check({ ...options, overrides: false, print: false });
+    if (options.print !== false) overrides = await printFlowStart(verb, probe, options.askOverrides, overrides);
+    const flow = await withUpgrades({ ...options, overrides, print: false }, handleItem, probe),
+      out = { ...makeOut(flow, options), interactive: options.interactive === true };
+    if (options.print !== false) printer(out, overrides ? [] : (out.overrides || []), true);
+    return out;
   };
 /**
 * 逐包升级并安装依赖,默认打印结果;每个包单独执行 npm install <name>@<picked>,
@@ -196,11 +207,8 @@ const check = async (options = {}) => {
 * @returns {Promise<object>} check 结果加 installed 成功项、failed 失败项、command(npm 命令名)
 */
 const install = async (options = {}) => {
-  let overrides = options.overrides;
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm',
-    probe = await check({ ...options, overrides: false, print: false });
-  if (options.print !== false) overrides = await printFlowStart('安装', probe, options.askOverrides, overrides);
-  const { result, updated, installed, failed, pending } = await withUpgrades({ ...options, overrides, print: false },
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  return runFlow('安装', options,
     async ({ item, picked, next, manifest, result, updated, installed, failed }) => {
       if (item.field === 'overrides') {
         applyUpgrade({ item, picked, next, manifest, updated, installed }, { recordInstall: true });
@@ -216,14 +224,14 @@ const install = async (options = {}) => {
           { cwd: result.root, stdio: options.stdio || 'pipe', shell: false });
         else execFileSync(npm, ['install', `${item.name}@${picked}`],
           { cwd: result.root, stdio: options.stdio || 'pipe', shell: true });
-
         applyUpgrade({ item, picked, next, manifest, updated, installed }, { recordInstall: true });
       }
       catch (err) { failed.push({ ...item, reason: err.message || String(err) }); }
-    }, probe),
-    out = { ...result, updated, installed, failed, pending, command: npm, interactive: options.interactive === true };
-  if (options.print !== false) printInstall(out, overrides ? [] : (out.overrides || []), true);
-  return out;
+    },
+    flow => ({
+      ...flow.result, updated: flow.updated, installed: flow.installed, failed: flow.failed, pending: flow.pending,
+      command: npm
+    }), printInstall);
 };
 
 /**
@@ -234,17 +242,9 @@ const install = async (options = {}) => {
  *   print 传 false 时不打印
  * @returns {Promise<object>} check 结果加 updated 已写入项
  */
-const update = async (options = {}) => {
-  let overrides = options.overrides;
-  const probe = await check({ ...options, overrides: false, print: false });
-  if (options.print !== false) overrides = await printFlowStart('更新', probe, options.askOverrides, overrides);
-  const { result, updated, pending } = await withUpgrades({ ...options, overrides, print: false },
-    ({ item, picked, next, manifest, updated }) => {
-      applyUpgrade({ item, picked, next, manifest, updated }, { skipMissing: true });
-    }, probe);
-  const out = { ...result, updated, pending, interactive: options.interactive === true };
-  if (options.print !== false) printUpdate(out, overrides ? [] : (out.overrides || []), true);
-  return out;
-};
+const update = async (options = {}) => runFlow('更新', options,
+  ({ item, picked, next, manifest, updated }) =>
+    applyUpgrade({ item, picked, next, manifest, updated }, { skipMissing: true }),
+  flow => ({ ...flow.result, updated: flow.updated, pending: flow.pending }), printUpdate);
 
 export { check, install, update };
