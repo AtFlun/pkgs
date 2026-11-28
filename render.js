@@ -12,15 +12,15 @@ const dispWidth = text => {
   return width;
 },
   // 版本前缀剥离与预发布判定,统一正则避免各处写法漂移
-  stripPrefix = v => String(v).replace(/[\^~]|>=|<=|>|<|=/g, ''), isPreVer = v => /-[0-9A-Za-z.-]+$/.test(stripPrefix(v)),
+  joinNames = list => list.map(i => i.name).join('、'),
+  maxDisp = (rows, extraRows, fn, min = 0) => Math.max(min, ...rows.map(fn), ...extraRows.map(fn)),
+  rowTarget = r => r.target != null ? r.target : r.latest, stripPrefix = v => String(v).replace(/[\^~]|>=|<=|>|<|=/g, ''),
+  isPreVer = v => /-[0-9A-Za-z.-]+$/.test(stripPrefix(v)),
   rowWidths = (rows, extraRows = [], minLatest = 0) => ({
-    name: Math.max(0, ...rows.map(r => dispWidth(String(r.name))), ...extraRows.map(r => dispWidth(String(r.name)))),
-    current: Math.max(0, ...rows.map(r => dispWidth(String(r.current))),
-      ...extraRows.map(r => dispWidth(String(r.current)))),
-    latest: Math.max(minLatest, ...rows.map(r => dispWidth(String(r.target != null ? r.target : r.latest))),
-      ...extraRows.map(r => dispWidth(String(r.target != null ? r.target : r.latest)))),
-    altVer: Math.max(0, ...rows.map(r => r.alt ? dispWidth(String(r.alt.version)) : 0),
-      ...extraRows.map(r => r.alt ? dispWidth(String(r.alt.version)) : 0))
+    name: maxDisp(rows, extraRows, r => dispWidth(String(r.name))),
+    current: maxDisp(rows, extraRows, r => dispWidth(String(r.current))),
+    latest: maxDisp(rows, extraRows, r => dispWidth(String(rowTarget(r))), minLatest),
+    altVer: maxDisp(rows, extraRows, r => r.alt ? dispWidth(String(r.alt.version)) : 0)
   }),
   altOf = item => {
     const target = item.target || item.latest, pre = isPreVer(target);
@@ -48,7 +48,7 @@ const dispWidth = text => {
     return current >= width ? text : text + ' '.repeat(width - current);
   },
   printRow = (row, widths, written) => {
-    const target = row.target != null ? row.target : row.latest, pre = isPreVer(target),
+    const target = rowTarget(row), pre = isPreVer(target),
       rawTag = pre ? '预发布' : '稳定版', tag = (pre ? chalk.magenta : chalk.greenBright)(padWidth('(' + rawTag + ')', 8)),
       altText = row.alt ? (row.alt.pre ? ' (预发布)' : ' (稳定版)') : '',
       alt = row.alt ? chalk.gray('、') + (row.alt.pre ? chalk.magenta : chalk.green)
@@ -66,13 +66,12 @@ const dispWidth = text => {
       && !pending.some(i => i.explicit) && (interactive || !pending.length)) return;
 
     const [okMain, okOvr] = splitOvr(ok), [failMain, failOvr] = splitOvr(fail),
-      verOf = i => i.picked || i.next || i.target || i.latest,
-      isPre = i => isPreVer(verOf(i)),
+      verOf = i => i.picked || i.next || i.target || i.latest, isPre = i => isPreVer(verOf(i)),
       fmt = arr => arr.map(i => `${i.name}@${stripPrefix(verOf(i))}`).join('、'),
       tags = ['✓ 稳定版', '✓ 预发布版', '✓ overrides', '✗ 失败', '✗ overrides', '✗ 忽略', '✗ 保持'],
-      tagW = Math.max(...tags.map(dispWidth)),
-      line = (paint, tag, content, tail = '') => console.log(`      ${paint(padWidth(tag, tagW))}  ${content}${tail}`),
-      preOk = okMain.filter(isPre), stableOk = okMain.filter(i => !isPre(i));
+      tagW = Math.max(...tags.map(dispWidth)), preOk = okMain.filter(isPre), stableOk = okMain.filter(i => !isPre(i)),
+      line = (paint, tag, content, tail = '') => console.log(`      ${paint(padWidth(tag, tagW))}  ${content}${tail}`);
+
     console.log(`    ${chalk.cyan(verb + '结果:')}`);
     if (stableOk.length) line(chalk.green, '✓ 稳定版', chalk.cyanBright(fmt(stableOk)));
     if (preOk.length) line(chalk.magenta, '✓ 预发布版', chalk.cyanBright(fmt(preOk)));
@@ -82,20 +81,20 @@ const dispWidth = text => {
     const holdLines = [];
     if (ignored.length && !interactive)
       holdLines.push({
-        tag: '✗ 忽略', names: ignored.map(i => i.name).join('、'), tail: ' (未显式指定 overrides 指令参数)'
+        tag: '✗ 忽略', names: joinNames(ignored), tail: ' (未显式指定 overrides 指令参数)'
       });
     const pendingExplicit = pending.filter(i => i.explicit && !i.reason),
       pendingAuto = pending.filter(i => !i.explicit && !i.reason), pendingHeld = pending.filter(i => i.reason)
         .reduce((m, i) => m.set(i.reason, (m.get(i.reason) || []).concat(i)), new Map());
     if (pendingExplicit.length)
       holdLines.push({
-        tag: '✗ 保持', names: pendingExplicit.map(i => i.name).join('、'), tail: ' (已是最新可用版本,无更高版本)'
+        tag: '✗ 保持', names: joinNames(pendingExplicit), tail: ' (已是最新可用版本,无更高版本)'
       });
     for (const [reason, group] of pendingHeld)
-      holdLines.push({ tag: '✗ 忽略', names: group.map(i => i.name).join('、'), tail: ` (${reason})` });
+      holdLines.push({ tag: '✗ 忽略', names: joinNames(group), tail: ` (${reason})` });
     if (pendingAuto.length && !interactive)
       holdLines.push({
-        tag: '✗ 忽略', names: pendingAuto.map(i => i.name).join('、'), tail: ' (未显式指定 choose 参数,保持当前版本)'
+        tag: '✗ 忽略', names: joinNames(pendingAuto), tail: ' (未显式指定 choose 参数,保持当前版本)'
       });
     if (holdLines.length) {
       const nameW = Math.max(...holdLines.map(h => dispWidth(h.names)));
