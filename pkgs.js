@@ -144,21 +144,25 @@ const check = async (options = {}) => {
     const preTarget = pre[item.name] || null, stableNewer = compareVer(stable, item.current) > 0,
       preNewer = Boolean(preTarget) && compareVer(preTarget, item.current) > 0;
     if (item.pre) {
-      if (preNewer)
+      if (preNewer) {
+        const altStable = stableNewer && compareVer(stable, preTarget) > 0 ? stable : null;
         upgrades.push({
           ...item, latest: stableNewer ? stable : null, prerelease: preTarget, target: preTarget, mode: 'pre',
-          next: item.prefix + preTarget, sameNewer: true, oppNewer: stableNewer
+          next: item.prefix + preTarget, sameNewer: true, oppNewer: stableNewer,
+          alt: altStable ? { label: '最新稳定版', version: altStable, pre: false } : null
         });
+      }
       else if (stableNewer) choices.push({
         ...item, latest: stable, prerelease: preTarget, target: item.current, mode: 'choose',
-        next: item.prefix + item.current, sameNewer: false, oppNewer: true
+        next: item.prefix + item.current, sameNewer: false, oppNewer: true, alt: null
       });
     }
     else if (stableNewer) {
       const oppPre = preTarget && compareVer(preTarget, stable) > 0 ? preTarget : null;
       upgrades.push({
         ...item, latest: stable, prerelease: oppPre, target: stable, mode: 'stable',
-        next: item.prefix + stable, sameNewer: true, oppNewer: Boolean(oppPre)
+        next: item.prefix + stable, sameNewer: true, oppNewer: Boolean(oppPre),
+        alt: oppPre ? { label: '最新预发布', version: oppPre, pre: true } : null
       });
     }
   }

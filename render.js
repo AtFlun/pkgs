@@ -1,5 +1,4 @@
 import chalk from 'chalk';
-import { compareVer } from './net.js';
 
 const dispWidth = text => {
   let width = 0;
@@ -22,27 +21,18 @@ const dispWidth = text => {
     latest: maxDisp(rows, extraRows, r => dispWidth(String(rowTarget(r))), minLatest),
     altVer: maxDisp(rows, extraRows, r => r.alt ? dispWidth(String(r.alt.version)) : 0)
   }),
-  altOf = item => {
-    const target = item.target || item.latest, pre = isPreVer(target);
-    if (!pre && item.prerelease && compareVer(item.prerelease, target) > 0)
-      return { label: '最新预发布', version: item.prerelease, pre: true };
-    if (pre && item.latest && !isPreVer(item.latest) && compareVer(item.latest, target) > 0)
-      return { label: '最新稳定版', version: item.latest, pre: false };
-    return null;
-  },
   buildView = (result, written = false) => {
     const base = ((written ? (result.updated || result.upgrades) : result.upgrades) || [])
       .filter(item => item.field !== 'overrides'),
       choiceRows = written ? [] : (result.choices || []).filter(item => item.field !== 'overrides')
         .map(item => ({ ...item, target: item.latest, choice: true }));
     return base.concat(choiceRows).sort((a, b) => a.name.localeCompare(b.name))
-      .map(item => ({ ...item, target: item.target || item.latest, alt: written ? null : altOf(item) }));
+      .map(item => ({ ...item, target: item.target || item.latest, alt: written ? null : item.alt || null }));
   },
-  ovrRowsOf = result => ((result?.overrides) || [])
-    .map(item => ({
-      name: item.path ? item.path.join(' > ') : item.name,
-      current: item.current, target: item.target || item.latest, field: 'overrides'
-    })),
+  ovrRowsOf = result => ((result?.overrides) || []).map(item => ({
+    name: item.path ? item.path.join(' > ') : item.name,
+    current: item.current, target: item.target || item.latest, field: 'overrides'
+  })),
   padWidth = (text, width) => {
     const current = dispWidth(text);
     return current >= width ? text : text + ' '.repeat(width - current);
@@ -80,22 +70,16 @@ const dispWidth = text => {
     if (failOvr.length) line(chalk.red, '✗ overrides', chalk.yellowBright(fmt(failOvr)));
     const holdLines = [];
     if (ignored.length && !interactive)
-      holdLines.push({
-        tag: '✗ 忽略', names: joinNames(ignored), tail: ' (未显式指定 overrides 指令参数)'
-      });
+      holdLines.push({ tag: '✗ 忽略', names: joinNames(ignored), tail: ' (未显式指定 overrides 指令参数)' });
     const pendingExplicit = pending.filter(i => i.explicit && !i.reason),
       pendingAuto = pending.filter(i => !i.explicit && !i.reason), pendingHeld = pending.filter(i => i.reason)
         .reduce((m, i) => m.set(i.reason, (m.get(i.reason) || []).concat(i)), new Map());
     if (pendingExplicit.length)
-      holdLines.push({
-        tag: '✗ 保持', names: joinNames(pendingExplicit), tail: ' (已是最新可用版本,无更高版本)'
-      });
+      holdLines.push({ tag: '✗ 保持', names: joinNames(pendingExplicit), tail: ' (已是最新可用版本,无更高版本)' });
     for (const [reason, group] of pendingHeld)
       holdLines.push({ tag: '✗ 忽略', names: joinNames(group), tail: ` (${reason})` });
     if (pendingAuto.length && !interactive)
-      holdLines.push({
-        tag: '✗ 忽略', names: joinNames(pendingAuto), tail: ' (未显式指定 choose 参数,保持当前版本)'
-      });
+      holdLines.push({ tag: '✗ 忽略', names: joinNames(pendingAuto), tail: ' (未显式指定 choose 参数,保持当前版本)' });
     if (holdLines.length) {
       const nameW = Math.max(...holdLines.map(h => dispWidth(h.names)));
       for (const h of holdLines)
