@@ -38,7 +38,7 @@ const dispWidth = text => {
     return base.concat(choiceRows).sort((a, b) => a.name.localeCompare(b.name))
       .map(item => ({ ...item, target: item.target || item.latest, alt: written ? null : altOf(item) }));
   },
-  ovrRowsOf = result => ((result && result.overrides) || [])
+  ovrRowsOf = result => ((result?.overrides) || [])
     .map(item => ({
       name: item.path ? item.path.join(' > ') : item.name,
       current: item.current, target: item.target || item.latest, field: 'overrides'
@@ -47,7 +47,7 @@ const dispWidth = text => {
     const current = dispWidth(text);
     return current >= width ? text : text + ' '.repeat(width - current);
   },
-  printRow = (row, widths, written) => {
+  printRow = (row, widths) => {
     const target = rowTarget(row), pre = isPreVer(target),
       rawTag = pre ? '预发布' : '稳定版', tag = (pre ? chalk.magenta : chalk.greenBright)(padWidth('(' + rawTag + ')', 8)),
       altText = row.alt ? (row.alt.pre ? ' (预发布)' : ' (稳定版)') : '',
@@ -106,16 +106,16 @@ const dispWidth = text => {
   printTitle = title => console.log(chalk.blueBright(`\n  ${title}`)),
   printHead = (title, root) => (printTitle(title), printRoot(root)),
   // 主表与 overrides 子表共用一次列宽计算,保证两表同列对齐;返回是否打印了内容
-  printTables = (mainRows, ovrRows, written, title) => {
+  printTables = (mainRows, ovrRows, title) => {
     if (!mainRows.length && !ovrRows.length) return false;
     const widths = rowWidths(mainRows.concat(ovrRows));
     if (mainRows.length) {
       if (title) console.log(`    ${chalk.cyan(title)}`);
-      for (const row of mainRows) printRow(row, widths, written);
+      for (const row of mainRows) printRow(row, widths);
     }
     if (ovrRows.length) {
       console.log(`    ${chalk.cyan('overrides 可升项')}`);
-      for (const row of ovrRows) printRow(row, widths, false);
+      for (const row of ovrRows) printRow(row, widths);
       console.log('');
     }
     return true;
@@ -124,11 +124,11 @@ const dispWidth = text => {
     const mainRows = buildView(result, false).filter(item => item.field !== 'overrides')
       .filter((item, i, arr) => arr.findIndex(x => x.name === item.name) === i)
       .map(item => ({ ...item, field: item.field || 'dependencies' }));
-    printTables(mainRows, ovrRowsOf(result), true, verb);
+    printTables(mainRows, ovrRowsOf(result), verb);
   },
   // 打印主体(版本表 / 跳过 / 分组 / 忽略)
-  printBody = (result, written = false, verb, tail = true) => {
-    if (!printTables(buildView(result, written), ovrRowsOf(result), written)
+  printBody = (result, written = false, tail = true) => {
+    if (!printTables(buildView(result, written), ovrRowsOf(result))
       && !(result.pending || []).length)
       console.log(`    ${chalk.cyan('状态 ')}${chalk.green(written ? '全部依赖已是最新' : '没有可升级的依赖')}`);
     if (result.skipped.length) {
