@@ -144,7 +144,8 @@ const check = async (options = {}) => {
     if (item.pre) {
       if (preNewer)
         upgrades.push({
-          ...item, latest: stable, prerelease: preTarget, target: preTarget, mode: 'pre', next: item.prefix + preTarget
+          ...item, latest: stableNewer ? stable : null, prerelease: preTarget, target: preTarget, mode: 'pre',
+          next: item.prefix + preTarget
         });
       else if (stableNewer) choices.push({
         ...item, latest: stable, prerelease: preTarget, target: item.current, mode: 'choose',

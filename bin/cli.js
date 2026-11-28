@@ -2,8 +2,41 @@
 import chalk from 'chalk';
 import readline from 'readline';
 import { check, install, update } from '../index.js';
+import { compareVer } from '../net.js';
 
-let rl = null;
+let rl = null, queue = [], waiter = null;
+const open = () => {
+  if (rl) return;
+  rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: Boolean(process.stdin.isTTY) });
+  rl.on('line', line => {
+    if (waiter) { const w = waiter; waiter = null; w(line); }
+    else queue.push(line);
+  });
+  rl.once('close', () => {
+    rl = null;
+    if (waiter) { const w = waiter; waiter = null; w(null); }
+  });
+},
+  readLine = () => new Promise(resolve => {
+    if (queue.length) return resolve(queue.shift());
+    waiter = resolve;
+  }),
+  // 管道模式 readline 不回显输入,补回显避免提示与下一行挤在一起;终端下由 readline 自行回显
+  echo = line => {
+    if (!process.stdin.isTTY && line !== null) process.stdout.write(chalk.gray(String(line)) + '\n');
+  },
+  prompt = async (fallback, pick) => {
+    open();
+    process.stdout.write(chalk.gray('    > '));
+    const line = await readLine();
+    echo(line);
+    return line === null ? fallback : pick(String(line).trim());
+  },
+  askLine = (item, ctx, text, fallback, pick) => {
+    const nm = chalk.cyanBright(String(item.name).padEnd(ctx.maxNameW || 0));
+    console.log(chalk.gray('    ') + nm + chalk.gray(' ' + text));
+    return prompt(fallback, pick);
+  };
 const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(arg)),
   refresh = has('--refresh', '-r'), stable = has('--stable', '-s'), pre = has('--prerelease', '-p'),
   overrides = has('--overrides'), chooseAt = (() => {
@@ -18,43 +51,35 @@ const raw = process.argv.slice(2), has = (...a) => raw.some(arg => a.includes(ar
     return true;
   }), cmd = rest[0],
   // 显式 --choose/-c 或 -s/-p 决定预发布/稳定版(与函数 choose 同形);都不传则询问交互
-  askChoose = (item, ctx = {}) => new Promise(resolve => {
-    const open = () => { rl || (rl = readline.createInterface({ input: process.stdin, output: process.stdout })); },
-      nm = chalk.cyanBright(String(item.name).padEnd(ctx.maxNameW || 0));
-    if (item.mode === 'stable') {
-      if (!item.prerelease) return resolve(item.latest);
-      console.log(chalk.gray('    ') + nm
-        + chalk.gray(' 请输入 1/2,输入2为预发布,否则回车或1或任意键→稳定版'));
-      if (!process.stdin.isTTY) return resolve(item.latest);
-      open();
-      return rl.question(chalk.gray('    > '), ans => resolve(ans.trim() === '2' ? item.prerelease : item.latest));
-    }
-    if (item.mode === 'choose') {
-      console.log(chalk.gray('    ') + nm
-        + chalk.gray(' 请输入 1/2,输入2为稳定版,否则回车或1→保持当前'));
-      if (!process.stdin.isTTY) return resolve(item.current);
-      open();
-      return rl.question(chalk.gray('    > '), ans => resolve(ans.trim() === '2' ? item.latest : item.current));
-    }
-    console.log(chalk.gray('    ') + nm
-      + chalk.gray(' 请输入 1/2,输入2为稳定版,否则回车或1或任意键→预发布'));
-    if (!process.stdin.isTTY) return resolve(item.target);
-    open();
-    return rl.question(chalk.gray('    > '), ans => resolve(ans.trim() === '2' ? item.latest : item.target));
-  }),
+  askChoose = (item, ctx = {}) => {
+    const curPre = item.pre, sameVer = curPre ? item.prerelease : item.latest,
+      oppVer = curPre ? item.latest : item.prerelease,
+      sameNewer = Boolean(sameVer) && compareVer(sameVer, item.current) > 0,
+      oppNewer = Boolean(oppVer) && compareVer(oppVer, item.current) > 0,
+      sameName = curPre ? '预发布' : '稳定版', oppName = curPre ? '稳定版' : '预发布';
+    if (sameNewer && oppNewer)
+      return askLine(item, ctx, `输入2为${oppName},输入任意键或1或确认键为${sameName}`,
+        sameVer, ans => ans === '2' ? oppVer : sameVer);
+    if (sameNewer) return Promise.resolve(sameVer);
+    if (oppNewer)
+      return askLine(item, ctx, `输入2为${oppName},输入任意键或1或确认键不升级${oppName}`,
+        item.current, ans => ans === '2' ? oppVer : item.current);
+    return Promise.resolve(item.current);
+  },
   askOverrideCount = async probe => {
-    if (!process.stdin.isTTY) return false;
+    const n = (probe.overrides || []).length;
+    if (!n) return false;
     try {
-      const n = (probe.overrides || []).length;
-      if (!n) return false;
-      rl || (rl = readline.createInterface({ input: process.stdin, output: process.stdout }));
-      return await new Promise(resolve => rl.question(
-        chalk.gray(`    是否同时更新 ${n} 项 overrides? [y/N]: `), ans => resolve(/^y(es)?$/i.test(String(ans).trim()))));
+      open();
+      process.stdout.write(chalk.gray(`    是否同时更新 ${n} 项 overrides? [y/N]: `));
+      const line = await readLine();
+      echo(line);
+      return /^y(es)?$/i.test(String(line || '').trim());
     } catch { return false; }
   },
   closeAsk = () => {
     if (!rl) return;
-    rl.close(), rl = null;
+    rl.close(), rl = null, queue = [], waiter = null;
   },
   fail = err => {
     console.error(`    ${chalk.red('✗ ')}${chalk.gray(err?.message || String(err))}`), process.exitCode = 1;
